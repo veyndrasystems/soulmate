@@ -1,0 +1,283 @@
+use crate::project_skills;
+use serde_json::{json, Value};
+use std::fs;
+use std::path::{Path, PathBuf};
+
+const PROFILES: [(&str, &str); 3] = [
+    ("lead", "# Lead\n\nOwn the accepted goal, scope changes, verification, and final result.\n"),
+    ("worker", "# Worker\n\nImplement one bounded task and return changed files plus verification evidence.\n"),
+    ("reviewer", "# Reviewer\n\nReview the checked-out artifact and returned work, not their summary. Every finding needs a file:line reference, measured number, or short quote. Check guards, documented limitations, and deliberate decisions before reporting. For a whole-repository review, run the repository's mechanical inventory first and report adoption, long-term ownership, and agent-consumer findings separately. When a finding recurs, recommend the mechanical gate that would have caught it. Return role-scoped evidence; do not silently expand scope or claim the lead's final authority.\n"),
+];
+const SOULMATE_SCHEMA: &str = concat!(
+    "https://raw.githubusercontent.com/veyndrasystems/soulmate/v",
+    env!("CARGO_PKG_VERSION"),
+    "/schema/soulmate.schema.json"
+);
+
+pub fn init_with_options(
+    product_root: &str,
+    coffee: bool,
+    mode: Option<&str>,
+    project_id: Option<&str>,
+    control_root: Option<&str>,
+    state_root: Option<&str>,
+) -> Result<PathBuf, String> {
+    let requested = absolute(Path::new(product_root))?;
+    let product = ordinary_directory(&requested, "project path")?;
+    let in_worktree = match crate::git_preflight::worktree_root(&product) {
+        Ok(root) => root.is_some(),
+        Err(error) if crate::git_preflight::has_git_marker(&product) => return Err(error),
+        Err(_) => false,
+    };
+    let selected_mode = match mode {
+        Some("local") => "local",
+        Some("portable") => "portable",
+        Some(_) => return Err("--mode must be local or portable".into()),
+        None if in_worktree || crate::git_preflight::has_git_marker(&product) => {
+            return Err("init in a Git worktree requires explicit --mode local or portable".into())
+        }
+        None => "portable",
+    };
+    let control = if selected_mode == "local" {
+        ordinary_directory(
+            &absolute(Path::new(
+                control_root.ok_or("local init requires --control-root")?,
+            ))?,
+            "ControlRoot",
+        )?
+    } else {
+        product.clone()
+    };
+    let state = if selected_mode == "local" {
+        ordinary_directory(
+            &absolute(Path::new(
+                state_root.ok_or("local init requires --state-root")?,
+            ))?,
+            "StateRoot",
+        )?
+    } else {
+        product.clone()
+    };
+    if selected_mode == "local" {
+        let id = project_id.ok_or("local init requires --project-id")?;
+        crate::project_layout::validate_id(id)?;
+        crate::project_layout::ensure_binding_available(id)?;
+        crate::git_preflight::reject_roots_under_worktree(&product, &control, &state)?;
+    }
+    let config = control.join("soulmate.json");
+    if fs::symlink_metadata(&config).is_ok() {
+        return Err("soulmate.json already exists; init never overwrites it".into());
+    }
+    let agents_dir = control.join(crate::project_layout::CANONICAL_AGENTS_DIR);
+    let mut target_paths = vec![
+        config.clone(),
+        state.join(".soulmate/.gitignore"),
+        agents_dir.join("lead.md"),
+        agents_dir.join("worker.md"),
+        agents_dir.join("reviewer.md"),
+        control.join(".agents/skills/soulmate/SKILL.md"),
+        control.join(".claude/skills/soulmate/SKILL.md"),
+    ];
+    target_paths.extend(
+        crate::project_layout::CANONICAL_CONTROL_DIRS.map(|relative| control.join(relative)),
+    );
+    target_paths
+        .extend(crate::project_layout::CANONICAL_STATE_DIRS.map(|relative| state.join(relative)));
+    if coffee {
+        target_paths.push(control.join(".agents/skills/coffee/SKILL.md"));
+        target_paths.push(control.join(".claude/skills/coffee/SKILL.md"));
+    }
+    let control_targets = target_paths
+        .iter()
+        .filter(|path| path.starts_with(&control))
+        .map(PathBuf::as_path)
+        .collect::<Vec<_>>();
+    let state_targets = target_paths
+        .iter()
+        .filter(|path| path.starts_with(&state))
+        .map(PathBuf::as_path)
+        .collect::<Vec<_>>();
+    crate::git_preflight::refuse_tracked_targets(&control, &control_targets)?;
+    crate::git_preflight::refuse_tracked_targets(&state, &state_targets)?;
+    crate::managed_files::ensure_managed_directory(&state, &state.join(".soulmate"))?;
+    let state_dir = state.join(".soulmate");
+    preserve_or_create(
+        &state_dir.join(".gitignore"),
+        "*\n!.gitignore\n",
+        ".soulmate/.gitignore",
+        &state,
+    )?;
+    for relative in crate::project_layout::CANONICAL_STATE_DIRS {
+        crate::managed_files::ensure_managed_directory(&state, &state.join(relative))?;
+    }
+    for relative in crate::project_layout::CANONICAL_CONTROL_DIRS {
+        crate::managed_files::ensure_managed_directory(&control, &control.join(relative))?;
+    }
+    for (name, content) in PROFILES {
+        let relative = format!("{}/{name}.md", crate::project_layout::CANONICAL_AGENTS_DIR);
+        preserve_or_create(&control.join(&relative), content, &relative, &control)?;
+    }
+
+    project_skills::activate(&control, coffee)?;
+    if selected_mode == "local" {
+        crate::project_layout::create_binding(
+            project_id.ok_or("local init requires --project-id")?,
+            &control,
+            &product,
+            &state,
+        )?;
+    }
+    let mut config_source =
+        serde_json::to_string_pretty(&default_config(selected_mode, project_id))
+            .map_err(|error| error.to_string())?;
+    config_source.push('\n');
+    crate::managed_files::write_exclusive(&config, config_source.as_bytes())?;
+    Ok(config)
+}
+
+pub fn refresh(
+    root: &str,
+    coffee: bool,
+) -> Result<Vec<project_skills::SkillRefreshStatus>, String> {
+    let project = ordinary_directory(&absolute(Path::new(root))?, "project path")?;
+    let config_path = project.join("soulmate.json");
+    let config_name = config_path
+        .to_str()
+        .ok_or("configuration path is not valid UTF-8")?;
+    let loaded = crate::config::load(Some(config_name))?;
+    if loaded.mode == crate::project_layout::Mode::Portable
+        && fs::canonicalize(&loaded.product_root).map_err(|error| error.to_string())? != project
+    {
+        return Err("soulmate.json project root does not match --root".into());
+    }
+    project_skills::refresh(&loaded.control_root, coffee)
+}
+
+pub fn doctor(path: Option<&str>) -> Vec<Value> {
+    let mut checks = Vec::new();
+    let mut project_dotagents_config = false;
+    let binary = std::env::current_exe()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "soulmate".into());
+    checks.push(json!({"name":"binary","ok":true,"detail":binary}));
+    match crate::config::load(path) {
+        Ok(loaded) => {
+            project_dotagents_config = loaded.control_root.join(".agents/agents.toml").is_file();
+            checks.push(
+                json!({"name":"config","ok":true,"detail":loaded.path.display().to_string()}),
+            );
+            if let Some(agents) = loaded.config["agents"].as_object() {
+                for (name, agent) in agents {
+                    let profile = agent["profile"].as_str().unwrap_or("");
+                    let ok = crate::config::file(&loaded.control_root, profile).is_ok();
+                    checks.push(json!({"name":format!("profile:{name}"),"ok":ok,"detail":profile}));
+                }
+            }
+            for warning in crate::boundary_manifest::warnings(&loaded.config) {
+                checks.push(json!({
+                    "name": format!("boundary:{}:{}", warning["agent"].as_str().unwrap_or("unknown"), warning["field"].as_str().unwrap_or("unknown")),
+                    "ok": false,
+                    "detail": warning["detail"]
+                }));
+            }
+        }
+        Err(error) => checks.push(json!({"name":"config","ok":false,"detail":error})),
+    }
+    for name in ["codex", "claude"] {
+        checks
+            .push(json!({"name":name,"ok":command_exists(name),"detail":"optional host command"}));
+    }
+    checks.push(dotagents_check(project_dotagents_config));
+    checks
+}
+
+fn default_config(mode: &str, project_id: Option<&str>) -> Value {
+    let mut project = json!({"root":"."});
+    if mode == "local" {
+        project["mode"] = json!("local");
+        project["id"] = json!(project_id.unwrap_or_default());
+    }
+    json!({"$schema":SOULMATE_SCHEMA,"version":1,"project":project,"orchestration":{"lead":"lead","maxParallel":2},"agents":{"lead":agent("lead","Own the goal, scope changes, verification, and final result."),"worker":agent("worker","Implement one bounded task without redefining architecture."),"reviewer":agent("reviewer","Review evidence and return findings to the lead.")},"workflows":{"change":{"advisers":[],"workers":["worker"],"reviewers":["reviewer"]}}})
+}
+fn agent(name: &str, purpose: &str) -> Value {
+    json!({"profile":format!("{}/{name}.md", crate::project_layout::CANONICAL_AGENTS_DIR),"purpose":purpose,"observe":[],"write":[],"commands":[],"skills":[],"memoryRead":[],"memoryWrite":[],"memoryForget":[],"retention":"task","crossContext":"none"})
+}
+
+fn preserve_or_create(path: &Path, content: &str, label: &str, root: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(info) => {
+            if info.file_type().is_symlink() {
+                return Err(format!("managed file must not be a symlink: {label}"));
+            }
+            if !info.is_file() {
+                return Err(format!("managed path must be a regular file: {label}"));
+            }
+            if label == ".soulmate/.gitignore" {
+                let source = fs::read_to_string(path).map_err(|e| e.to_string())?;
+                let patterns = source
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                    .collect::<Vec<_>>();
+                if !patterns.contains(&"*")
+                    || !patterns.contains(&"!.gitignore")
+                    || patterns
+                        .iter()
+                        .any(|p| p.starts_with('!') && *p != "!.gitignore")
+                {
+                    return Err(".soulmate/.gitignore must protect '*' and may unignore only '.gitignore'; refusing unsafe existing content".into());
+                }
+            }
+            Ok(())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            crate::managed_files::ensure_managed_directory(
+                root,
+                path.parent().ok_or("managed path has no parent")?,
+            )?;
+            crate::managed_files::write_exclusive(path, content.as_bytes())
+        }
+        Err(error) => Err(error.to_string()),
+    }
+}
+fn ordinary_directory(path: &Path, label: &str) -> Result<PathBuf, String> {
+    let info = fs::symlink_metadata(path)
+        .map_err(|_| format!("{label} does not exist: {}", path.display()))?;
+    if !info.is_dir() {
+        return Err(format!("{label} must be a directory"));
+    }
+    fs::canonicalize(path).map_err(|e| e.to_string())
+}
+fn command_exists(name: &str) -> bool {
+    std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).any(|dir| dir.join(name).is_file()))
+        .unwrap_or(false)
+}
+fn dotagents_check(project_config: bool) -> Value {
+    if command_exists("dotagents") {
+        return json!({"name":"dotagents","ok":true,"detail":"optional distribution command on PATH"});
+    }
+    let npx = command_exists("npx");
+    let global_config = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .is_some_and(|home| home.join(".agents/agents.toml").is_file());
+    let config = project_config || global_config;
+    let detail = match (npx, config) {
+        (true, true) => {
+            "command absent; npx launcher and agents.toml observed; package not invoked"
+        }
+        (true, false) => "command absent; npx launcher observed; package not verified",
+        (false, true) => "command absent; agents.toml observed; launcher not verified",
+        (false, false) => "optional distribution command absent",
+    };
+    json!({"name":"dotagents","ok":false,"detail":detail})
+}
+fn absolute(path: &Path) -> Result<PathBuf, String> {
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        std::env::current_dir()
+            .map(|directory| directory.join(path))
+            .map_err(|error| format!("current directory cannot be resolved: {error}"))
+    }
+}

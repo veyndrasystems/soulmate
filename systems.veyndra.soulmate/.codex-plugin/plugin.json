@@ -1,0 +1,19 @@
+{
+  "name": "soulmate",
+  "version": "0.10.0",
+  "description": "Bounded coding-agent handoffs and memory governance evidence.",
+  "author": { "name": "Veyndra Systems", "url": "https://github.com/veyndrasystems" },
+  "repository": "https://github.com/veyndrasystems/soulmate",
+  "license": "MIT",
+  "keywords": ["agents", "briefs", "orchestration", "receipts"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Soulmate",
+    "shortDescription": "Bounded, inspectable agent handoffs",
+    "longDescription": "Compile agent briefs, deterministic handoff plans, and governed memory evidence without launching models or collecting transcripts.",
+    "developerName": "Veyndra Systems",
+    "category": "Productivity",
+    "capabilities": ["Read"],
+    "defaultPrompt": ["Create a bounded plan for this task."]
+  }
+}

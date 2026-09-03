@@ -1,0 +1,90 @@
+name: Rust primary CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.75.0 --profile minimal --component rustfmt --component clippy && rustup default 1.75.0
+      - run: cargo fmt --check
+      - name: Enforce path-rendering rule
+        run: ./scripts/check-path-rendering.sh
+      - name: Keep experimental observations out of the product
+        run: ./scripts/check-product-surface.sh
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - name: Keep the public refusal demo truthful
+        run: SOULMATE_BIN=target/debug/soulmate ./scripts/demo-refusal.sh
+      - name: Exercise native tmux handoff
+        run: |
+          command -v tmux >/dev/null || (sudo apt-get update && sudo apt-get install -y tmux)
+          cargo test --locked --test away_native real_tmux_child_presents_bound_evidence_without_persisting_the_prompt -- --ignored --exact
+      - name: Check release references
+        run: ./scripts/check-release-refs.sh
+      - run: SOULMATE_BUILD_COMMIT="$GITHUB_SHA" cargo build --release --locked
+      - name: Single-binary smoke without language toolchains
+        run: ./scripts/onboarding-smoke.sh "$GITHUB_WORKSPACE/target/release/soulmate"
+      - name: Upload Linux release candidate for WSL
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: soulmate-linux-x86_64-${{ github.sha }}
+          path: target/release/soulmate
+          if-no-files-found: error
+          retention-days: 1
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.75.0 --profile minimal && rustup default 1.75.0
+      - run: cargo test --locked
+  windows-wsl:
+    needs: rust
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Download Linux release candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: soulmate-linux-x86_64-${{ github.sha }}
+          path: wsl-release
+      - name: Install Ubuntu under WSL 2
+        shell: pwsh
+        run: |
+          wsl.exe --install --distribution Ubuntu --no-launch --web-download
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $distributions = (wsl.exe --list --verbose | Out-String) -replace "`0", ""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $distributions
+          if ($distributions -notmatch 'Ubuntu\s+\w+\s+2') {
+            throw 'Ubuntu was not installed as WSL 2'
+          }
+      - name: Exercise the installed Linux release inside WSL 2
+        shell: pwsh
+        run: |
+          $windowsWorkspace = $env:GITHUB_WORKSPACE -replace '\\', '/'
+          $workspace = (& wsl.exe --distribution Ubuntu --user root -- wslpath -a $windowsWorkspace).Trim()
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & wsl.exe --distribution Ubuntu --user root -- sh "$workspace/scripts/ci-wsl.sh" "$workspace"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Cache cargo-audit
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-0.22.2-${{ runner.os }}-${{ runner.arch }}
+      - name: Install pinned cargo-audit when uncached
+        run: command -v cargo-audit >/dev/null || cargo install cargo-audit --locked --version 0.22.2
+      - run: cargo audit

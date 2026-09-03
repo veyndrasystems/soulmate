@@ -1,0 +1,3 @@
+# Absent --root defaults are CLI option defaults, not path conversion.
+src/cli.rs:a.options.get("root").map(String::as_str).unwrap_or("."),
+src/project_commands.rs:.unwrap_or(".");

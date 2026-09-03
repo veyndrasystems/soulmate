@@ -1,0 +1,58 @@
+mod args;
+mod away;
+mod boundary_manifest;
+mod cli;
+mod config;
+mod config_types;
+mod envelope;
+mod forgetting;
+mod git_preflight;
+mod harness_manifest;
+mod hash;
+mod hook_runtime;
+mod hook_settings;
+mod hooks;
+mod layout_migration;
+mod managed_files;
+mod memory;
+mod memory_discovery;
+mod memory_policy;
+mod memory_selection;
+mod onboarding;
+mod producer;
+mod profile;
+mod project_commands;
+mod project_layout;
+mod project_path;
+mod project_skills;
+mod receipt;
+mod run;
+mod run_artifact;
+mod run_assignment;
+mod run_error;
+mod run_ledger;
+mod run_state;
+
+fn main() {
+    let raw = std::env::args_os().skip(1).collect::<Vec<_>>();
+    let json_output = raw.iter().any(|argument| argument == "--json");
+    let arguments = raw
+        .into_iter()
+        .map(|argument| {
+            argument
+                .into_string()
+                .map_err(|_| "arguments must be valid UTF-8".to_owned())
+        })
+        .collect::<Result<Vec<_>, _>>();
+    let result = arguments.and_then(cli::run);
+    if let Err(error) = result {
+        if let Some(machine) = error.strip_prefix("SOULMATE_JSON:") {
+            println!("{machine}");
+        } else if json_output {
+            println!("{}", serde_json::json!({ "error": error }));
+        } else {
+            eprintln!("soulmate: {error}");
+        }
+        std::process::exit(1);
+    }
+}

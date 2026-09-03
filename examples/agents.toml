@@ -1,0 +1,12 @@
+version = 1
+agents = ["claude", "codex", "grok"]
+
+[[plugins]]
+name = "soulmate"
+source = "veyndrasystems/soulmate"
+ref = "v0.10.0"
+path = "."
+targets = ["claude", "codex", "grok"]
+
+# Stable dotagents installs the portable skill for these targets. The bundled
+# host-hook extension is preserved as compatibility material, not activated.

@@ -1,0 +1,558 @@
+use serde_json::json;
+
+use crate::{
+    args::{self, Arguments},
+    away, config, envelope, forgetting, hook_runtime, hooks, memory, profile, receipt, run,
+};
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+fn positional<'a>(a: &'a Arguments, index: usize, message: &str) -> Result<&'a str, String> {
+    a.positional
+        .get(index)
+        .map(String::as_str)
+        .ok_or_else(|| message.to_owned())
+}
+
+fn option<'a>(a: &'a Arguments, name: &str, message: &str) -> Result<&'a str, String> {
+    a.options
+        .get(name)
+        .map(String::as_str)
+        .ok_or_else(|| message.to_owned())
+}
+
+pub fn run(argv: Vec<String>) -> Result<(), String> {
+    if argv.is_empty() {
+        print_help();
+        return Ok(());
+    }
+
+    let command = match argv[0].as_str() {
+        "--help" => "help",
+        "--version" => "version",
+        command => command,
+    };
+    let parsed = if matches!(argv[0].as_str(), "--help" | "--version") {
+        args::parse(&argv)?
+    } else {
+        args::parse(&argv[1..])?
+    };
+
+    if command == "version" || parsed.flags.contains_key("version") {
+        args::assert_options("version", &parsed, &["version", "help"])?;
+        args::assert_positionals("version", &parsed, 0)?;
+        println!("{VERSION}");
+        return Ok(());
+    }
+    if command == "help" {
+        args::assert_options(command, &parsed, &["help", "version"])?;
+        if parsed.positional == ["advanced"] {
+            print_advanced_help();
+            return Ok(());
+        }
+        args::assert_positionals(command, &parsed, 0)?;
+        print_help();
+        return Ok(());
+    }
+    if parsed.flags.contains_key("help") {
+        args::assert_options(command, &parsed, &["help", "version"])?;
+        args::assert_positionals(command, &parsed, 0)?;
+        print_help();
+        return Ok(());
+    }
+    match command {
+        "hook-protocol" => {
+            args::assert_options(command, &parsed, &[])?;
+            args::assert_positionals(command, &parsed, 0)?;
+            println!("{}", hooks::PROTOCOL);
+            Ok(())
+        }
+        "hook-run" => {
+            args::assert_options(command, &parsed, &[])?;
+            args::assert_positionals(command, &parsed, 0)?;
+            hook_runtime::run()
+        }
+        "init" => crate::project_commands::init(&parsed),
+        "bind" => crate::project_commands::bind(&parsed),
+        "doctor" => crate::project_commands::doctor(&parsed),
+        "hooks" => hooks_command(&parsed),
+        "profile" if parsed.positional.first().map(String::as_str) == Some("audit") => {
+            profile_audit_command(&parsed)
+        }
+        command => configured_command(command, &parsed),
+    }
+}
+
+fn hooks_command(a: &Arguments) -> Result<(), String> {
+    args::assert_options("hooks", a, &["hosts", "root", "json"])?;
+    args::assert_positionals("hooks", a, 1)?;
+    let action = positional(
+        a,
+        0,
+        "hooks requires one action: plan, apply, status, or remove",
+    )?;
+    let hosts = option(
+        a,
+        "hosts",
+        "hooks requires explicit --hosts (for example --hosts codex,claude)",
+    )?;
+    let items = hooks::manage(
+        action,
+        hosts,
+        a.options.get("root").map(String::as_str).unwrap_or("."),
+    )?;
+    if a.flags.contains_key("json") {
+        print_json(&json!({ "action": action, "hosts": items }))?;
+    } else {
+        for item in items {
+            println!(
+                "{}: {}\n  target: {}",
+                item["host"], item["state"], item["targetPath"]
+            );
+        }
+    }
+    Ok(())
+}
+
+fn configured_command(command: &str, a: &Arguments) -> Result<(), String> {
+    if !matches!(
+        command,
+        "check" | "brief" | "plan" | "verify" | "profile" | "memory" | "run" | "away" | "migrate"
+    ) {
+        return Err(format!("unknown command '{command}'"));
+    }
+    let loaded = config::load(a.options.get("config").map(String::as_str))?;
+    match command {
+        "check" => crate::project_commands::check(&loaded, a),
+        "brief" => brief_command(&loaded, a),
+        "plan" => plan_command(&loaded, a),
+        "verify" => verify_command(&loaded, a),
+        "profile" => profile_command(&loaded, a),
+        "memory" => memory_command(&loaded, a),
+        "run" => run_command(&loaded, a),
+        "away" => away_command(&loaded, a),
+        "migrate" => migrate_command(&loaded, a),
+        _ => Err(format!("unknown command '{command}'")),
+    }
+}
+
+fn migrate_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
+    args::assert_options("migrate", a, &["config", "apply"])?;
+    args::assert_positionals("migrate", a, 1)?;
+    let apply = a.flags.contains_key("apply");
+    let value = match positional(a, 0, "migrate requires layout or paths")? {
+        "layout" => crate::layout_migration::run(l, apply),
+        "paths" => crate::layout_migration::prepare_paths(l, apply),
+        _ => return Err("migrate requires layout or paths".into()),
+    }?;
+    print_json(&value)
+}
+
+fn away_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
+    let action = positional(a, 0, "away requires start, list, or show")?;
+    match action {
+        "start" => {
+            args::assert_options(
+                "away start",
+                a,
+                &["config", "name", "require-harness-receipt", "sandbox-mode"],
+            )?;
+            args::assert_positionals("away start", a, 3)?;
+            let result = away::start(
+                l,
+                positional(a, 1, "away start requires AGENT LEDGER")?,
+                positional(a, 2, "away start requires AGENT LEDGER")?,
+                a.options.get("name").map(String::as_str).unwrap_or("away"),
+                a.flags.contains_key("require-harness-receipt"),
+                a.options.get("sandbox-mode").map(String::as_str),
+            )?;
+            println!(
+                "run_id={}\nsocket={}\nsession={}\nstate={}",
+                result["runId"].as_str().unwrap_or(""),
+                result["socket"].as_str().unwrap_or(""),
+                result["session"].as_str().unwrap_or(""),
+                result["state"].as_str().unwrap_or("")
+            );
+            Ok(())
+        }
+        "list" => {
+            args::assert_options("away list", a, &["config"])?;
+            args::assert_positionals("away list", a, 1)?;
+            let runs = away::list(l)?;
+            if runs.is_empty() {
+                println!("no Soulmate away runs");
+            } else {
+                for (run, status) in runs {
+                    println!("{run}\t{status}");
+                }
+            }
+            Ok(())
+        }
+        "show" => {
+            args::assert_options("away show", a, &["config"])?;
+            args::assert_positionals("away show", a, 2)?;
+            for (name, value) in away::show(l, positional(a, 1, "away show requires RUN_ID")?)? {
+                println!("{name}={value}");
+            }
+            Ok(())
+        }
+        "_run" => {
+            args::assert_options("away _run", a, &["config"])?;
+            args::assert_positionals("away _run", a, 7)?;
+            away::run_child(
+                l,
+                positional(a, 1, "invalid internal away command")?,
+                positional(a, 2, "invalid internal away command")?,
+                positional(a, 3, "invalid internal away command")?,
+                (
+                    positional(a, 4, "invalid internal away command")?,
+                    positional(a, 5, "invalid internal away command")?,
+                ),
+                positional(a, 6, "invalid internal away command")?,
+            )
+        }
+        _ => Err("away requires start, list, or show".into()),
+    }
+}
+
+fn brief_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
+    args::assert_options(
+        "brief",
+        a,
+        &["config", "task", "receipt", "harness-manifest", "json"],
+    )?;
+    args::assert_positionals("brief", a, 1)?;
+    let name = positional(a, 0, "brief accepts 1 positional argument")?;
+    let task = option(a, "task", "--task requires a non-empty value")?;
+    let value = envelope::brief(l, name, task)?;
+    if let Some(path) = a.options.get("receipt") {
+        receipt::write(
+            path,
+            l,
+            &value,
+            a.options.get("harness-manifest").map(String::as_str),
+        )?;
+    }
+    if a.flags.contains_key("json") {
+        print_json(&value)?;
+    } else {
+        print!("{}", envelope::render(&value));
+    }
+    Ok(())
+}
+
+fn plan_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
+    args::assert_options(
+        "plan",
+        a,
+        &["config", "goal", "receipt", "harness-manifest"],
+    )?;
+    args::assert_positionals("plan", a, 1)?;
+    let workflow = positional(a, 0, "plan accepts 1 positional argument")?;
+    let goal = option(a, "goal", "--goal requires a non-empty value")?;
+    let value = envelope::plan(l, workflow, goal)?;
+    if let Some(path) = a.options.get("receipt") {
+        receipt::write(
+            path,
+            l,
+            &value,
+            a.options.get("harness-manifest").map(String::as_str),
+        )?;
+    }
+    print_json(&value)?;
+    Ok(())
+}
+
+fn verify_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
+    args::assert_options("verify", a, &["config"])?;
+    args::assert_positionals("verify", a, 1)?;
+    let value = receipt::verify(positional(a, 0, "verify requires a receipt path")?, l)?;
+    print_json(&value)?;
+    if !value["valid"].as_bool().unwrap_or(false) {
+        return Err("receipt verification failed".into());
+    }
+    Ok(())
+}
+
+fn profile_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
+    let action = a.positional.first().map(String::as_str).unwrap_or("");
+    match action {
+        "audit" => profile_audit_command(a),
+        "import" => {
+            args::assert_options("profile import", a, &["config", "purpose", "forbid-term"])?;
+            args::assert_positionals("profile import", a, 3)?;
+            let result = profile::import(
+                l,
+                positional(a, 1, "profile import requires NAME SOURCE")?,
+                positional(a, 2, "profile import requires NAME SOURCE")?,
+                option(a, "purpose", "profile import requires --purpose")?,
+                a.options.get("forbid-term").map(String::as_str),
+            )?;
+            print!("{result}");
+            Ok(())
+        }
+        "" => Err("profile requires AGENT".into()),
+        _ => {
+            args::assert_options("profile", a, &["config"])?;
+            args::assert_positionals("profile", a, 1)?;
+            let name = positional(a, 0, "profile requires AGENT")?;
+            let agent = l
+                .agent(name)
+                .ok_or_else(|| format!("unknown agent '{name}'"))?;
+            let path = config::file(&l.control_root, &agent.profile)?;
+            print!(
+                "{}",
+                std::fs::read_to_string(path).map_err(|e| e.to_string())?
+            );
+            Ok(())
+        }
+    }
+}
+
+fn profile_audit_command(a: &Arguments) -> Result<(), String> {
+    args::assert_options("profile audit", a, &["config", "forbid-term", "json"])?;
+    args::assert_positionals("profile audit", a, 2)?;
+    let value = profile::audit(
+        positional(a, 1, "profile audit requires SOURCE")?,
+        a.options.get("forbid-term").map(String::as_str),
+    )?;
+    if a.flags.contains_key("json") {
+        print_json(&value)?;
+    } else {
+        println!(
+            "Profile audit {}: {}",
+            if value["valid"].as_bool().unwrap_or(false) {
+                "passed"
+            } else {
+                "failed"
+            },
+            value["source"]
+        );
+    }
+    if value["valid"].as_bool().unwrap_or(false) {
+        Ok(())
+    } else {
+        Err("profile audit failed".into())
+    }
+}
+
+fn memory_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
+    let action = positional(a, 0, "memory requires an action")?;
+    match action {
+        "resolve" => {
+            args::assert_options("memory resolve", a, &["config", "json"])?;
+            args::assert_positionals("memory resolve", a, 2)?;
+            let agent = positional(a, 1, "memory resolve requires AGENT")?;
+            let value = memory::resolve(l, agent)?;
+            if a.flags.contains_key("json") {
+                print_json(&value)?;
+            } else if let Some(references) = value["references"].as_array() {
+                for reference in references {
+                    println!(
+                        "{} {} {} {}",
+                        reference["itemId"].as_str().unwrap_or(""),
+                        reference["scope"].as_str().unwrap_or(""),
+                        reference["sourcePath"].as_str().unwrap_or(""),
+                        reference["sourceSha256"].as_str().unwrap_or("")
+                    );
+                }
+            }
+            Ok(())
+        }
+        "attest-forgotten" => {
+            args::assert_options("memory attest-forgotten", a, &["config", "receipt"])?;
+            args::assert_positionals("memory attest-forgotten", a, 3)?;
+            let actor = positional(a, 1, "memory attest-forgotten requires AGENT LEDGER")?;
+            let ledger = positional(a, 2, "memory attest-forgotten requires AGENT LEDGER")?;
+            let receipt = option(a, "receipt", "memory attest-forgotten requires --receipt")?;
+            let value = forgetting::attest(l, actor, ledger, receipt)?;
+            print_json(&value)?;
+            Ok(())
+        }
+        "inspect" => {
+            args::assert_options("memory inspect", a, &["config", "json"])?;
+            args::assert_positionals("memory inspect", a, 2)?;
+            let value = memory::inspect(l, positional(a, 1, "memory inspect accepts LEDGER")?)?;
+            if a.flags.contains_key("json") {
+                print_json(&value)?;
+            } else if let Some(items) = value["items"].as_array() {
+                for item in items {
+                    println!("{} {} {}", item["itemId"], item["state"], item["scope"]);
+                }
+            }
+            Ok(())
+        }
+        "propose" => memory_transition(l, a, true),
+        _ => memory_transition(l, a, false),
+    }
+}
+
+fn memory_transition(l: &config::Loaded, a: &Arguments, propose: bool) -> Result<(), String> {
+    let allowed = if propose {
+        &["config", "ledger", "scope", "expires-at"][..]
+    } else {
+        &["config"][..]
+    };
+    args::assert_options("memory", a, allowed)?;
+    args::assert_positionals("memory", a, 3)?;
+    let actor = positional(a, 1, "memory action requires AGENT LEDGER")?;
+    let ledger = if propose {
+        option(a, "ledger", "memory propose requires --ledger")?
+    } else {
+        positional(a, 2, "memory transition requires LEDGER")?
+    };
+    let value = memory::action(
+        l,
+        actor,
+        positional(a, 0, "memory requires an action")?,
+        if propose {
+            a.positional.get(2).map(String::as_str)
+        } else {
+            None
+        },
+        a.options.get("scope").map(String::as_str),
+        ledger,
+        a.options.get("expires-at").map(String::as_str),
+    )?;
+    print_json(&value["event"])?;
+    Ok(())
+}
+
+fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
+    let action = positional(a, 0, "run requires an action")?;
+    let allowed = match action {
+        "start" => &["config", "goal", "ledger", "boundary", "harness-receipt"][..],
+        "next" | "inspect" => &["config", "json"][..],
+        "submit" => &["config", "outcome", "artifact", "artifact-root", "json"][..],
+        "supersede" => &[
+            "config",
+            "workflow",
+            "goal",
+            "ledger",
+            "boundary",
+            "harness-receipt",
+            "json",
+        ][..],
+        _ => {
+            return Err(
+                "run requires one action: start, next, submit, inspect, or supersede".into(),
+            )
+        }
+    };
+    args::assert_options("run", a, allowed)?;
+    let value = match action {
+        "start" => {
+            args::assert_positionals("run start", a, 2)?;
+            run::start(
+                l,
+                positional(a, 1, "run start requires WORKFLOW")?,
+                option(a, "goal", "run start requires --goal")?,
+                option(a, "ledger", "run start requires --ledger")?,
+                a.options.get("boundary").map(String::as_str),
+                a.options.get("harness-receipt").map(String::as_str),
+            )
+        }
+        "next" => {
+            args::assert_positionals("run next", a, 2)?;
+            run::next(l, positional(a, 1, "run next requires LEDGER")?)
+        }
+        "submit" => {
+            args::assert_positionals("run submit", a, 3)?;
+            run::submit(
+                l,
+                positional(a, 1, "run submit requires AGENT")?,
+                positional(a, 2, "run submit requires LEDGER")?,
+                option(a, "outcome", "run submit requires --outcome")?,
+                option(a, "artifact", "run submit requires --artifact")?,
+                a.options.get("artifact-root").map(String::as_str),
+            )
+        }
+        "inspect" => {
+            args::assert_positionals("run inspect", a, 2)?;
+            run::inspect(l, positional(a, 1, "run inspect requires LEDGER")?)
+        }
+        "supersede" => {
+            args::assert_positionals("run supersede", a, 2)?;
+            run::supersede(
+                l,
+                positional(a, 1, "run supersede requires OLD_LEDGER")?,
+                option(a, "workflow", "run supersede requires --workflow")?,
+                option(a, "goal", "run supersede requires --goal")?,
+                option(a, "ledger", "run supersede requires --ledger")?,
+                a.options.get("boundary").map(String::as_str),
+                a.options.get("harness-receipt").map(String::as_str),
+            )
+        }
+        _ => return Err("unsupported run action".into()),
+    }
+    .map_err(|error| map_run_error(error, a.flags.contains_key("json")))?;
+    print_json(&value)?;
+    Ok(())
+}
+
+fn map_run_error(error: String, json_output: bool) -> String {
+    let Some(machine) = error.strip_prefix("SOULMATE_DRIFT:") else {
+        return error;
+    };
+    if json_output {
+        return format!("SOULMATE_JSON:{machine}");
+    } else if let Ok(value) = serde_json::from_str::<serde_json::Value>(machine) {
+        if value["classification"] == "config_drift" {
+            eprintln!(
+                "configuration drift detected after run start (expected {}, current {}). Inspect the old run, then use 'soulmate run supersede' to begin an explicit successor.",
+                value["expectedConfigSha256"], value["currentConfigSha256"]
+            );
+        } else if value["classification"] == "profile_drift" {
+            eprintln!(
+                "profile drift detected after run start for {} (expected {}, current {}). Inspect the old run before choosing a successor.",
+                value["agent"], value["expectedProfileSha256"], value["currentProfileSha256"]
+            );
+        } else if value["classification"] == "boundary_drift" {
+            eprintln!(
+                "run boundary manifest drift detected after run start (expected {}, current {}). Restore the exact manifest or explicitly supersede the run.",
+                value["expectedBoundarySha256"], value["currentBoundarySha256"]
+            );
+        } else if value["classification"] == "harness_receipt_drift" {
+            eprintln!(
+                "harness receipt drift detected after run start (expected {}, current {}). Restore the exact receipt and manifest or explicitly supersede the run.",
+                value["expectedHarnessReceiptSha256"], value["currentHarnessReceiptSha256"]
+            );
+        } else {
+            eprintln!(
+                "memory drift detected after run start for {} (expected set {}, current set {}). Inspect the old run and current memory references, then use 'soulmate run supersede' for an intentional successor.",
+                value["agent"], value["expectedMemorySetSha256"], value["currentMemorySetSha256"]
+            );
+        }
+    }
+    if machine.contains("\"classification\":\"boundary_drift\"") {
+        "run boundary drift".to_string()
+    } else if machine.contains("\"classification\":\"harness_receipt_drift\"") {
+        "harness receipt drift".to_string()
+    } else if machine.contains("\"classification\":\"memory_drift\"") {
+        "run memory drift".to_string()
+    } else if machine.contains("\"classification\":\"profile_drift\"") {
+        "run profile drift".to_string()
+    } else {
+        "run configuration drift".to_string()
+    }
+}
+
+fn print_help() {
+    println!(
+        "Soulmate {VERSION}\n\nUsage: soulmate <command> [options]\n\nCore: init, brief, run, check\n\nRun 'soulmate help advanced' for lifecycle, recovery, migration, hooks, receipts, and optional execution convenience."
+    );
+}
+
+fn print_advanced_help() {
+    println!(
+        "Soulmate {VERSION}\n\nAdvanced: bind, doctor, plan, verify, profile, migrate, memory (resolve/inspect/lifecycle), away, hooks, hook-protocol, hook-run, version\n\nRun 'soulmate migrate layout --config CONFIG' to inspect a legacy profile migration, then repeat with --apply. Use 'migrate paths' for canonical harness and state directories.\nRun 'soulmate run supersede OLD_LEDGER --workflow WORKFLOW --goal GOAL --ledger NEW_LEDGER' to create an explicit successor after configuration, profile, memory, boundary, or harness-receipt drift."
+    );
+}
+
+fn print_json(value: &serde_json::Value) -> Result<(), String> {
+    println!(
+        "{}",
+        serde_json::to_string_pretty(value).map_err(|error| error.to_string())?
+    );
+    Ok(())
+}

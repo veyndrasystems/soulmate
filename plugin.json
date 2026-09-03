@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "soulmate",
+  "version": "0.10.0",
+  "description": "Bounded coding-agent handoffs and memory governance evidence.",
+  "author": { "name": "Veyndra Systems", "url": "https://github.com/veyndrasystems" },
+  "repository": "https://github.com/veyndrasystems/soulmate",
+  "license": "MIT",
+  "keywords": ["agents", "briefs", "orchestration", "receipts"],
+  "extensions": {
+    "systems.veyndra.soulmate": {
+      "purpose": "Preserved host-hook compatibility resources; host-specific activation is not implied."
+    }
+  }
+}

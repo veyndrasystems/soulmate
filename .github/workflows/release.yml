@@ -1,0 +1,85 @@
+name: Release Linux binary
+
+on:
+  push:
+    tags:
+      - "v0.*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Require the release tag at the current main commit
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          test "$(git rev-parse refs/remotes/origin/main)" = "$GITHUB_SHA"
+      - name: Cache cargo-audit
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-0.22.2-${{ runner.os }}-${{ runner.arch }}
+      - name: Install and verify pinned cargo-audit
+        run: |
+          if ! test "$(cargo-audit --version 2>/dev/null)" = "cargo-audit 0.22.2"; then
+            cargo install cargo-audit --locked --version 0.22.2 --force
+          fi
+          test "$(cargo-audit --version)" = "cargo-audit 0.22.2"
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.75.0 --profile minimal --component rustfmt --component clippy && rustup default 1.75.0
+      - run: cargo fmt --check
+      - name: Enforce path-rendering rule
+        run: ./scripts/check-path-rendering.sh
+      - name: Keep experimental observations out of the product
+        run: ./scripts/check-product-surface.sh
+      - name: Check release references
+        run: ./scripts/check-release-refs.sh
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - name: Keep the public refusal demo truthful
+        run: SOULMATE_BIN=target/debug/soulmate ./scripts/demo-refusal.sh
+      - run: cargo audit
+      - name: Exercise native tmux handoff
+        run: |
+          command -v tmux >/dev/null || (sudo apt-get update && sudo apt-get install -y tmux)
+          cargo test --locked --test away_native real_tmux_child_presents_bound_evidence_without_persisting_the_prompt -- --ignored --exact
+      - run: SOULMATE_BUILD_COMMIT="$GITHUB_SHA" cargo build --release --locked
+      - name: Exercise first-user path without language toolchains
+        run: ./scripts/onboarding-smoke.sh "$GITHUB_WORKSPACE/target/release/soulmate"
+      - name: Verify tag matches the binary
+        run: test "v$(target/release/soulmate version)" = "$GITHUB_REF_NAME"
+      - name: Package and checksum
+        run: |
+          mkdir dist
+          install -m 0755 target/release/soulmate dist/soulmate-x86_64-unknown-linux-gnu
+          tar -czf dist/soulmate-x86_64-unknown-linux-gnu.tar.gz -C dist soulmate-x86_64-unknown-linux-gnu
+          (cd dist && sha256sum soulmate-x86_64-unknown-linux-gnu.tar.gz > soulmate-x86_64-unknown-linux-gnu.tar.gz.sha256)
+      - name: Attest packaged archive provenance
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: dist/soulmate-x86_64-unknown-linux-gnu.tar.gz
+      - name: Verify packaged archive provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh attestation verify dist/soulmate-x86_64-unknown-linux-gnu.tar.gz \
+            --bundle "${{ steps.attest.outputs.bundle-path }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+            --source-ref "$GITHUB_REF" \
+            --source-digest "$GITHUB_SHA" \
+            --deny-self-hosted-runners
+      - name: Publish tag assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --verify-tag --title "Soulmate $GITHUB_REF_NAME" --generate-notes
+          fi
+          gh release upload "$GITHUB_REF_NAME" dist/*
