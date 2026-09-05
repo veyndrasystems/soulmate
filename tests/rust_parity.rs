@@ -36,7 +36,10 @@ fn version_is_the_rust_release() {
         .output()
         .unwrap();
     assert!(output.status.success());
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "0.10.0");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        env!("CARGO_PKG_VERSION")
+    );
 }
 
 #[test]
@@ -70,7 +73,10 @@ fn entrypoint_help_and_version_forms_are_compatible() {
             "arguments {arguments:?}: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "0.10.0");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            env!("CARGO_PKG_VERSION")
+        );
     }
 }
 
@@ -533,7 +539,10 @@ fn receipt_round_trip_uses_the_rust_binary() {
         serde_json::from_str(&fs::read_to_string(&receipt).unwrap()).unwrap();
     assert_eq!(receipt_value["version"], 1);
     assert_eq!(receipt_value["producer"]["name"], "soulmate");
-    assert_eq!(receipt_value["producer"]["version"], "0.10.0");
+    assert_eq!(
+        receipt_value["producer"]["version"],
+        env!("CARGO_PKG_VERSION")
+    );
     let verified = invoke(&["verify", &receipt, "--config", &cfg]);
     assert!(
         verified.status.success(),

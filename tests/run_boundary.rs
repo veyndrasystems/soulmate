@@ -111,7 +111,7 @@ fn run_boundary_narrows_assignment_and_drift_fails_closed() {
     )
     .unwrap();
     assert_eq!(first["producer"]["name"], "soulmate");
-    assert_eq!(first["producer"]["version"], "0.10.0");
+    assert_eq!(first["producer"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
         first["plan"]["boundaryManifest"]["path"],
         ".agents/boundaries/task.json"
