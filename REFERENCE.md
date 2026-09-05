@@ -16,14 +16,14 @@ Install the supported release as a single Rust binary. Node.js, npm, Python,
 and Cargo are not required after installation:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.10.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.11.0/install.sh | sh
 soulmate init --mode portable
 soulmate brief worker --task "Describe the change you want to make" --config soulmate.json
 soulmate run start change --goal "Describe the bounded change" --ledger .soulmate/runs/run.jsonl --config soulmate.json
 soulmate check --config soulmate.json
 ```
 
-The v0.10.0 release artifact supports Linux x86_64. Windows is supported through
+The v0.11.0 release artifact supports Linux x86_64. Windows is supported through
 Ubuntu on WSL 2 using that Linux artifact and keeping the agent, Soulmate, and
 project inside the distribution; see the [Windows WSL 2 guide](docs/windows-wsl.md).
 There is no native Windows executable or native Windows away runner. macOS is
@@ -52,6 +52,10 @@ configuration. The host still performs the returned assignment.
   reviewer `approved` is role-scoped evidence, not acceptance.
 - Complete security limitations and non-guarantees live in
   [SECURITY.md](SECURITY.md).
+
+[Native conversation continuity](docs/native-continuity.md) describes the
+root-thread preservation rule, its distinction from durable role memory, and
+the limits of the advisory hook and regression evidence.
 
 ## First run details
 
@@ -142,7 +146,7 @@ files carrying Soulmate's ownership marker; unowned or conflicting files cause
 the command to refuse the update:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.10.0/install.sh | SOULMATE_VERSION=v0.10.0 sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.11.0/install.sh | SOULMATE_VERSION=v0.11.0 sh
 soulmate init --refresh-skills --root PATH
 ```
 
@@ -458,14 +462,14 @@ must be declared separately when you manage their projections with dotagents.
 For an existing project with `agents.toml`:
 
 ```text
-dotagents --project add veyndrasystems/soulmate --ref v0.10.0
+dotagents --project add veyndrasystems/soulmate --ref v0.11.0
 ```
 
 For a new dotagents-managed project:
 
 ```text
 dotagents --project init
-dotagents --project add veyndrasystems/soulmate --ref v0.10.0
+dotagents --project add veyndrasystems/soulmate --ref v0.11.0
 ```
 
 During `dotagents --project init`, select the hosts you use. `dotagents add`
@@ -591,7 +595,7 @@ ControlRoot and pass it only when creating an existing brief or plan receipt:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.10.0/schema/harness-manifest.schema.json",
+  "$schema": "https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.11.0/schema/harness-manifest.schema.json",
   "version": 1,
   "project": { "id": "my-project", "session": "codex-2026-08-30" },
   "harness": { "name": "my-harness", "version": "2026.08.30" },

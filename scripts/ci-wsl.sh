@@ -22,7 +22,7 @@ mkdir -p "$install_root/bin"
 install -m 0755 "$candidate" "$install_root/bin/soulmate"
 export PATH="$install_root/bin:$PATH"
 
-test "$(soulmate version)" = "0.10.0"
+test "$(soulmate version)" = "0.11.0"
 tmux -V >/dev/null
 "$checkout/scripts/onboarding-smoke.sh" "$install_root/bin/soulmate" >/dev/null
 

@@ -14,6 +14,27 @@ delegation/review, resumability, or deterministic handoff evidence. Ordinary
 single-agent work proceeds directly. Soulmate launches no model, provider,
 subagent, scheduler, or arbitrary command.
 
+## Native conversation continuity
+
+Keep the existing root host conversation. Role selection, a brief, run
+resumption, profile or skill refresh, and governed memory lookup add bounded
+context to that conversation; they never authorize replacing, resetting,
+forking, or unnecessarily compacting it. Native subagents receive their exact
+bounded assignments while the root conversation remains active.
+
+Keep recent user corrections, rejected approaches, and their rationale as
+working context. Host/system authority and the frozen assignment still apply.
+If a correction requires changing a frozen run, retain the correction and
+refer the conflict to the existing lead for explicit supersession through the
+failure procedure below. Do not silently revise the assignment or discard the
+correction.
+
+Native conversational recall is distinct from opt-in durable role memory. A
+ledger, profile, brief, or memory lookup does not replace the conversation.
+Do not capture, reconstruct, or ingest host transcripts, or add shared memory
+to recover conversational context. Skill and hook presentation are advisory;
+they do not prove host continuity or model recall.
+
 ## Run sequence
 
 ```text

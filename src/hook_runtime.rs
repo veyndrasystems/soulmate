@@ -216,7 +216,7 @@ fn session_summary(config: &Value) -> String {
             names.join(", ")
         })
         .unwrap_or_default();
-    bounded(format!("Soulmate plan-only project context.\nLead: {}\nNamed agents: {}\nWorkflows: {}\nNo model was selected or launched; declarations are not an OS sandbox.", safe_inline(config["orchestration"]["lead"].as_str().unwrap_or("")), safe_inline(if agents.is_empty() { "none" } else { &agents }), safe_inline(if workflows.is_empty() { "none" } else { &workflows })))
+    bounded(format!("Soulmate plan-only project context.\nLead: {}\nNamed agents: {}\nWorkflows: {}\nPreserve the existing root host conversation; Soulmate context only augments it. Do not replace, reset, fork, or request compaction of it for role loading or handoff.\nKeep recent user corrections and rejected approaches with their rationale; refer frozen-run conflicts to the existing lead for explicit supersession. Native conversational recall is distinct from durable role memory.\nNo model was selected or launched; declarations are not an OS sandbox.", safe_inline(config["orchestration"]["lead"].as_str().unwrap_or("")), safe_inline(if agents.is_empty() { "none" } else { &agents }), safe_inline(if workflows.is_empty() { "none" } else { &workflows })))
 }
 
 fn bounded(value: String) -> String {

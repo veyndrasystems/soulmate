@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.11.0
+
+- Made native conversation preservation an explicit host-guidance invariant:
+  profiles, briefs, run records, and governed memory augment the active root
+  conversation. They do not authorize replacing it or discarding recent user
+  corrections, rejected approaches, or their rationale.
+- Session-start hooks present the same bounded advisory distinction. Executable
+  hook and generated-skill regression checks cover the behavior Soulmate owns.
+- Added a diagnostic guide that separates thread replacement, compaction,
+  injected context, and host/client integration hypotheses.
+- This is synchronized guidance and tested local hook behavior, not proof of
+  model compliance or resolution of a historical host-memory regression.
+- Migration: update host guidance with the supported skill-refresh path. No
+  CLI command, configuration, persisted format, dependency, or model runtime
+  changes are introduced. The minor version records the new product invariant
+  under the repository's versioning policy.
+
 ## 0.10.0
 
 - Attended implementation workers and reviewers must now use the host's native

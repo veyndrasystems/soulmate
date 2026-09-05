@@ -71,6 +71,8 @@ fn attended_work_uses_native_spawn_without_away_fallback() {
     let claude_projection =
         fs::read_to_string(control.join(".claude/skills/soulmate/SKILL.md")).unwrap();
     let source = std::str::from_utf8(SOULMATE_SKILL).unwrap();
+    assert_eq!(agents_projection.as_bytes(), SOULMATE_SKILL);
+    assert_eq!(claude_projection.as_bytes(), SOULMATE_SKILL);
     let normalize = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
 
     for skill in [source, &agents_projection, &claude_projection] {
@@ -96,6 +98,62 @@ fn attended_work_uses_native_spawn_without_away_fallback() {
         assert!(document.contains("soulmate away start implementation_worker"));
     }
 
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn portable_init_and_refresh_distribute_native_continuity_guidance() {
+    let base = temp("portable-continuity");
+    let product = base.join("product");
+    let bindings = base.join("bindings");
+    fs::create_dir(&product).unwrap();
+    let initialized = invoke(
+        &[
+            "init",
+            "--mode",
+            "portable",
+            "--root",
+            product.to_str().unwrap(),
+        ],
+        &bindings,
+    );
+    assert!(
+        initialized.status.success(),
+        "{}",
+        output_text(&initialized)
+    );
+    let source = std::str::from_utf8(SOULMATE_SKILL).unwrap();
+    assert!(source.contains("## Native conversation continuity"));
+    let config_before = fs::read(product.join("soulmate.json")).unwrap();
+    let paths = [
+        product.join(".agents/skills/soulmate/SKILL.md"),
+        product.join(".claude/skills/soulmate/SKILL.md"),
+    ];
+    for path in &paths {
+        assert_eq!(fs::read(path).unwrap(), SOULMATE_SKILL);
+        fs::write(
+            path,
+            "<!-- soulmate-managed-skill:v1 -->\nOld managed skill.\n",
+        )
+        .unwrap();
+    }
+    let refreshed = invoke(
+        &[
+            "init",
+            "--refresh-skills",
+            "--root",
+            product.to_str().unwrap(),
+        ],
+        &bindings,
+    );
+    assert!(refreshed.status.success(), "{}", output_text(&refreshed));
+    for path in paths {
+        assert_eq!(fs::read(path).unwrap(), SOULMATE_SKILL);
+    }
+    assert_eq!(
+        fs::read(product.join("soulmate.json")).unwrap(),
+        config_before
+    );
     fs::remove_dir_all(base).unwrap();
 }
 

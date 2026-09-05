@@ -14,7 +14,7 @@ bounded assignment, artifact hashes, and transitions it can validate.
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.10.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.11.0/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
