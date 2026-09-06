@@ -63,7 +63,12 @@ fn gate(name: &str, root: &Path) -> Output {
 }
 
 fn gate_args(name: &str, root: &Path, arguments: &[&str]) -> Output {
-    Command::new("sh")
+    gate_command(name, root, arguments).output().unwrap()
+}
+
+fn gate_command(name: &str, root: &Path, arguments: &[&str]) -> Command {
+    let mut command = Command::new("sh");
+    command
         .arg(
             Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("scripts")
@@ -75,9 +80,8 @@ fn gate_args(name: &str, root: &Path, arguments: &[&str]) -> Output {
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         // Supported installer overrides must not replace its checked source default.
         .env("SOULMATE_VERSION", "v99.98.97")
-        .env("SOULMATE_REPOSITORY", "example/override")
-        .output()
-        .unwrap()
+        .env("SOULMATE_REPOSITORY", "example/override");
+    command
 }
 
 fn expect_success(output: Output) {
@@ -221,6 +225,83 @@ fn recursive_scan_errors_are_not_treated_as_clean_results() {
     expect_failure(
         gate("check-release-refs.sh", &fixture.0),
         "broken scan link",
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn source_validation_rejects_broken_links_when_grep_suppresses_errors() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fixture = Fixture::release();
+    let bin = fixture.0.join("test-bin");
+    fs::create_dir(&bin).unwrap();
+    let lookup = Command::new("sh")
+        .args(["-c", "command -v grep"])
+        .output()
+        .unwrap();
+    assert!(lookup.status.success());
+    let real_grep = String::from_utf8(lookup.stdout).unwrap();
+    let shim = bin.join("grep");
+    fs::write(
+        &shim,
+        b"#!/bin/sh\ncase \"$1\" in\n  -R*)\n    printf recursive > \"$SOULMATE_TEST_GREP_CALLED\"\n    \"$SOULMATE_TEST_REAL_GREP\" \"$@\" 2>/dev/null\n    status=$?\n    if test \"$status\" -gt 1; then exit 0; fi\n    exit \"$status\"\n    ;;\nesac\nexec \"$SOULMATE_TEST_REAL_GREP\" \"$@\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&shim, fs::Permissions::from_mode(0o755)).unwrap();
+    let old_path = std::env::var_os("PATH").unwrap();
+    let path =
+        std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&old_path))).unwrap();
+    let called = fixture.0.join("grep-called");
+    let run = || {
+        gate_command("check-release-refs.sh", &fixture.0, &[])
+            .env("PATH", &path)
+            .env("SOULMATE_TEST_REAL_GREP", real_grep.trim())
+            .env("SOULMATE_TEST_GREP_CALLED", &called)
+            .output()
+            .unwrap()
+    };
+    expect_success(run());
+    assert!(called.is_file(), "control must reach recursive grep");
+    fs::remove_file(&called).unwrap();
+    std::os::unix::fs::symlink("missing-reference", fixture.0.join("docs/broken-link")).unwrap();
+    expect_failure(run(), "grep may silently skip broken links");
+    assert!(
+        !called.exists(),
+        "validation must fail before recursive grep"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn readable_source_links_are_scanned_and_git_directories_stay_excluded() {
+    use std::os::unix::fs::symlink;
+
+    let fixture = Fixture::release();
+    let targets = fixture.0.join("source-targets");
+    fs::create_dir(&targets).unwrap();
+    let reference = targets.join("reference.md");
+    fs::write(&reference, format!("release v{VERSION}\n")).unwrap();
+    symlink(
+        "../source-targets/reference.md",
+        fixture.0.join("docs/readable-file"),
+    )
+    .unwrap();
+    symlink(
+        "../source-targets",
+        fixture.0.join("examples/readable-directory"),
+    )
+    .unwrap();
+    let ignored = fixture.0.join("docs/.git");
+    fs::create_dir(&ignored).unwrap();
+    symlink("missing-reference", ignored.join("broken-link")).unwrap();
+    fs::write(ignored.join("history"), "release v1.0.0\n").unwrap();
+    expect_success(gate("check-release-refs.sh", &fixture.0));
+
+    fs::write(reference, "release v1.0.0\n").unwrap();
+    expect_failure(
+        gate("check-release-refs.sh", &fixture.0),
+        "readable linked source still participates in the scan",
     );
 }
 

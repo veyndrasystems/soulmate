@@ -77,7 +77,21 @@ wsl_version=$(sed -n 's/^test "$(soulmate version)" = "\([0-9][^"]*\)"$/\1/p' sc
 equal_version scripts/ci-wsl.sh "$wsl_version" "$plain"
 
 # Historical CHANGELOG entries are deliberately outside the current-reference scan.
-if refs=$(grep -RInE --exclude-dir=.git 'v[0-9]+\.[0-9]+\.[0-9]+' README.md REFERENCE.md install.sh docs examples schema scripts src); then
+set -- README.md REFERENCE.md install.sh docs examples schema scripts src
+# BSD and GNU grep differ on dangling links. Validate the same traversal first,
+# following readable links while preserving the existing .git directory exclusion.
+invalid_sources=$(find -L "$@" -type d -name .git -prune -o -exec sh -c '
+  failed=0
+  for source do
+    if ! test -r "$source" || { test -d "$source" && ! test -x "$source"; }; then
+      printf "%s\n" "$source"
+      failed=1
+    fi
+  done
+  exit "$failed"
+' sh {} +) || fail 'release-source traversal failed'
+test -z "$invalid_sources" || fail "missing or unreadable scan sources: $invalid_sources"
+if refs=$(grep -RInE --exclude-dir=.git 'v[0-9]+\.[0-9]+\.[0-9]+' "$@"); then
   :
 else
   status=$?
