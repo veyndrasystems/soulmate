@@ -489,3 +489,114 @@ fn synthetic_merge_cannot_mask_a_rewritten_or_missing_candidate() {
         "native HEAD remains mandatory",
     );
 }
+
+#[test]
+#[cfg(unix)]
+fn preview_publication_requires_an_existing_published_prerelease() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fixture = Fixture::new("preview-publication");
+    let gh = fixture.0.join("gh");
+    fs::write(
+        &gh,
+        r#"#!/bin/sh
+printf '%s\n' "$*" >> "$CALLS"
+case "$1 $2" in
+  'release view')
+    case "$SCENARIO" in
+      missing|read_error) exit 1 ;;
+      true_failure) printf 'true\n'; exit 1 ;;
+      stable|draft) printf 'false\n' ;;
+      malformed) printf 'unexpected\n' ;;
+      *) printf 'true\n' ;;
+    esac ;;
+  'release create'|'release upload') exit 0 ;;
+  *) exit 99 ;;
+esac
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&gh, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::create_dir(fixture.0.join("dist")).unwrap();
+    fs::write(fixture.0.join("dist/archive"), b"fixture").unwrap();
+    let calls = fixture.0.join("calls");
+    let path = std::env::join_paths(
+        std::iter::once(fixture.0.clone())
+            .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap())),
+    )
+    .unwrap();
+    for (tag, scenario, success, create) in [
+        ("v99.98.97-rc.1", "missing", false, false),
+        ("v99.98.97-rc.1", "read_error", false, false),
+        ("v99.98.97-rc.1", "true_failure", false, false),
+        ("v99.98.97-rc.1", "stable", false, false),
+        ("v99.98.97-rc.1", "draft", false, false),
+        ("v99.98.97-rc.1", "malformed", false, false),
+        ("v99.98.97-rc.1", "ready", true, false),
+        ("v99.98.97", "ready", true, false),
+        ("v99.98.97", "missing", true, true),
+        ("v99.98.97+build-one", "missing", true, true),
+    ] {
+        fs::write(&calls, b"").unwrap();
+        let output = gate_command("publish-release-assets.sh", &fixture.0, &[])
+            .env("PATH", &path)
+            .env("GITHUB_REF_NAME", tag)
+            .env("GITHUB_REPOSITORY", "example/project")
+            .env("SCENARIO", scenario)
+            .env("CALLS", &calls)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.success(),
+            success,
+            "{tag} {scenario}: {output:?}"
+        );
+        let calls = fs::read_to_string(&calls).unwrap();
+        assert_eq!(calls.contains("release create "), create, "{calls}");
+        assert_eq!(calls.contains("release upload "), success, "{calls}");
+        assert!(!calls.contains("--clobber"));
+        for call in calls.lines() {
+            assert!(call.contains(tag), "missing exact tag: {call}");
+            assert!(
+                call.contains("--repo example/project"),
+                "wrong repository: {call}"
+            );
+        }
+        if tag.contains("-rc.") {
+            assert!(calls.contains("--json isPrerelease,isDraft"), "{calls}");
+            assert!(
+                calls.contains(".isPrerelease == true and .isDraft == false"),
+                "{calls}"
+            );
+        }
+        if create {
+            assert!(calls.contains("--verify-tag"), "{calls}");
+            assert!(calls.contains("--generate-notes"), "{calls}");
+        }
+    }
+    for missing in ["GITHUB_REF_NAME", "GITHUB_REPOSITORY"] {
+        fs::write(&calls, b"").unwrap();
+        let output = gate_command("publish-release-assets.sh", &fixture.0, &[])
+            .env("PATH", &path)
+            .env("GITHUB_REF_NAME", "v99.98.97-rc.1")
+            .env("GITHUB_REPOSITORY", "example/project")
+            .env_remove(missing)
+            .env("SCENARIO", "ready")
+            .env("CALLS", &calls)
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "missing {missing}: {output:?}");
+        assert!(fs::read_to_string(&calls).unwrap().is_empty());
+    }
+    let workflow = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(".github/workflows/release.yml"),
+    )
+    .unwrap();
+    let provenance = workflow.find("gh attestation verify").unwrap();
+    let publish = workflow
+        .find("sh scripts/publish-release-assets.sh")
+        .unwrap();
+    assert!(provenance < publish);
+    assert!(!workflow.contains("gh release create"));
+    assert!(!workflow.contains("gh release upload"));
+}
