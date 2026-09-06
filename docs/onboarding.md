@@ -1,8 +1,11 @@
 # Onboarding by environment
 
-The first successful outcome is the same everywhere: initialize one disposable
-project, render a bounded assignment, start its ledger, and see a recorded
-artifact change refused. Model execution remains in the user's existing host.
+The first successful outcome is the same everywhere: inspect a completion
+claim, its check and review, the lead decision, and earlier results after
+rework. Start with the [complete checked-work example](first-checked-run.md),
+then use the same sequence with your own check and documents. Model execution
+remains in your existing host. Read the [authority boundary](../REFERENCE.md#authority-boundary)
+and [privacy limits](../SECURITY.md) before using real project data.
 
 ## Choose the storage mode
 
@@ -67,15 +70,43 @@ plugin links, not host activation. Soulmate itself does not need dotagents.
 
 ## Verify before using a real project
 
-From a checkout, run the public refusal with a built or installed binary:
+From this checkout, build and run the complete disposable example:
 
 ```sh
-SOULMATE_BIN=target/release/soulmate ./scripts/demo-refusal.sh
+cargo build --locked
+SOULMATE_BIN=target/debug/soulmate ./scripts/demo-checked-work.sh
 ```
 
-The script creates and removes its own temporary project. Then initialize a
-second disposable project and confirm the host sees the generated skill before
-using a real repository; skill discovery controls differ by host release.
+The new `--event-id` and `--text` options used by this flow are source changes
+pending release; use the built binary until a release includes them. The script
+runs a real check on a tiny input, records its failure, observes refused
+acceptance, requests rework, retrieves the assignment in a fresh process, then
+repairs, checks, reviews, and accepts. All actor documents are scripted and the
+temporary project is removed. No model or user project is involved.
 
-After that, choose portable or local mode for the real project and follow the
-[first handoff](../README.md#complete-the-first-handoff).
+The separate `soulmate benchmark` works with an installed binary supporting that
+command and retains its [bounded proof meaning](value-proof-methodology.md).
+The focused [artifact-drift example](../scripts/demo-refusal.sh) remains available.
+
+Next initialize a second disposable project and confirm the host sees the
+generated skill; discovery controls differ by host release. A pending
+assignment still needs the native host to execute it. If the required native
+subagent mechanism is unavailable, the skill returns the assignment to the
+operator; it does not silently switch executors.
+
+Follow [your first real checked run](first-checked-run.md#use-your-own-project)
+for explicit scope, result snapshots, submission-ID capture before the host
+check, review, lead acceptance, and rework. `run next --text` can retrieve the
+recorded assignment later, with prior artifact references; it does not restore
+the conversation or prove the host followed the skill.
+
+After a binary update, explicitly refresh only owned project skill copies:
+
+```sh
+soulmate init --refresh-skills --root PATH
+```
+
+Reload the host or start a new session to discover the refreshed skill. This
+refresh does not install hooks or change the host's authentication/permissions.
+Keep a compatible binary for existing checked ledgers during rollback; see
+[update and removal](../REFERENCE.md#removal).

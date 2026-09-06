@@ -55,9 +55,13 @@ pub(crate) fn init(arguments: &Arguments) -> Result<(), String> {
     } else {
         ""
     };
+    let quoted_config = crate::presentation::shell_quote(
+        path.to_str()
+            .ok_or("configuration path is not valid UTF-8")?,
+    );
     println!(
-        "Created {}\nActivated project skills for Codex and Claude: Soulmate{coffee}.\nNext:\n  soulmate brief worker --task \"Describe the change you want to make\" --config {}\n  soulmate run start change --goal \"Describe the bounded change\" --ledger .soulmate/runs/run.jsonl --config {}\n  soulmate check --config {}",
-        path.display(), path.display(), path.display(), path.display()
+        "Created {}\nActivated project skills for Codex and Claude: Soulmate{coffee}.\nNext (replace YOUR_TEST_COMMAND with a real project check command):\n  soulmate brief worker --task \"Describe the change you want to make\" --config={quoted_config}\n  soulmate run start change --goal \"Describe the bounded change\" --check-command \"YOUR_TEST_COMMAND\" --ledger .soulmate/runs/run.jsonl --config={quoted_config}\n  soulmate check --config={quoted_config}\nThe host executes the frozen check command and reports its actual result. 'soulmate check' validates configuration, profiles, and declared boundaries; it does not run project tests.",
+        path.display()
     );
     Ok(())
 }

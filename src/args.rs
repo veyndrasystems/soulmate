@@ -43,6 +43,8 @@ const VALUE_OPTIONS: &[&str] = &[
 const BOOLEAN_OPTIONS: &[&str] = &[
     "apply",
     "json",
+    "event-id",
+    "text",
     "help",
     "version",
     "with-coffee",

@@ -19,9 +19,16 @@ and Cargo are not required after installation:
 curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.12.0/install.sh | sh
 soulmate init --mode portable
 soulmate brief worker --task "Describe the change you want to make" --config soulmate.json
-soulmate run start change --goal "Describe the bounded change" --ledger .soulmate/runs/run.jsonl --config soulmate.json
+soulmate run start change --goal "Describe the bounded change" --check-command "YOUR_TEST_COMMAND" --ledger .soulmate/runs/run.jsonl --config soulmate.json
 soulmate check --config soulmate.json
 ```
+
+Replace `YOUR_TEST_COMMAND` with your actual project check. These commands
+prepare the run; the [complete first checked run](docs/first-checked-run.md)
+continues through real result documents, check execution, review, and acceptance.
+The new `--event-id`/`--text` forms below are unreleased source conveniences;
+use a binary built from this checkout for that flow. The pinned installer above
+installs the release, not unpublished source changes.
 
 The v0.12.0 release artifact supports Linux x86_64. Windows is supported through
 Ubuntu on WSL 2 using that Linux artifact and keeping the agent, Soulmate, and
@@ -101,9 +108,13 @@ in [SECURITY.md](SECURITY.md). The installed Rust binary is the sole language
 runtime requirement. Inside a Git worktree, initialization and state mutation
 also require `git` on `PATH` for the publication preflight.
 
-For a cheap end-to-end local exercise, jump to [Evaluation](#evaluation).
+For a complete checked task and rework, follow the
+[first checked run](docs/first-checked-run.md). For the narrower artifact-drift
+exercise, jump to [Evaluation](#evaluation).
 
-Start the first resumable handoff after initialization:
+For an unchecked handoff after initialization, use a new ledger. This form
+has no check-result requirement; use [checked acceptance](#checked-acceptance)
+when project checks must qualify acceptance:
 
 ```sh
 soulmate run start change --goal "Describe the bounded change you want to make" --ledger .soulmate/runs/run.jsonl --config soulmate.json
@@ -139,26 +150,38 @@ soulmate run start change --goal "Describe the bounded change" \
   --check-command "cargo test --locked" --config soulmate.json
 ```
 
-The native host performs and submits the normal assignments. After submitting a
-worker's exact artifact, run the configured check in the host and preserve its
-actual exit status, including failure:
+The native host performs and submits the normal assignments. With the updated
+source binary, capture a completed worker submission before executing the check:
 
 ```sh
+set -eu
+worker_event=$(soulmate run submit worker .soulmate/runs/checked.jsonl \
+  --outcome completed --artifact .soulmate/artifacts/worker-result.md \
+  --artifact-root state --event-id --config soulmate.json)
 check_exit=0
 cargo test --locked || check_exit=$?
 soulmate run record-check .soulmate/runs/checked.jsonl \
-  --target WORKER_SUBMISSION_EVENT_SHA256 \
-  --check-command "cargo test --locked" --exit-code "$check_exit" \
-  --config soulmate.json
+  --target "$worker_event" --check-command "cargo test --locked" \
+  --exit-code "$check_exit" --config soulmate.json
 soulmate run status .soulmate/runs/checked.jsonl --config soulmate.json
-soulmate run explain .soulmate/runs/checked.jsonl --config soulmate.json
 ```
 
-Use the `eventSha256` returned by the worker's successful submission as the
-target. The command string must match the start-time policy exactly. This
+This fragment assumes the worker is pending and has written that fresh result
+file. Use the project's actual command consistently at start and execution.
+`--event-id` returns only the successfully appended submission hash and a newline;
+failed submission stops the shell sequence. Default submission output stays
+JSON with the hash at `event.eventSha256`. On a binary without `--event-id`,
+the host must extract that field before executing the check. Do not use an
+artifact hash or select the latest event after execution. `--target` remains
+required. `--event-id` and `--json` conflict and fail before mutation.
+
+The command string must match the frozen start-time policy exactly. This
 records a caller report; it does not execute or authenticate the check. Repeat
 for each current worker result. Results from an old attempt cannot qualify a
-new one.
+new one. Start prints checked/unchecked requirements on stderr and preserves
+JSON stdout. The updated `init` starter includes `--check-command
+"YOUR_TEST_COMMAND"` and asks for substitution. Omitting the flag still creates
+an unchecked run; generic `check` does not execute project tests.
 
 A missing or failed current result prevents final acceptance. A refusal records
 its exact check evidence without appending an accepted submission. Existing
@@ -414,6 +437,28 @@ Run state is private operational data beneath StateRoot. Each assignment fixes
 the selected profile, requested runtime, declared skills/boundary, memory
 references, upstream artifact hashes, and producer evidence. These are
 selection/presentation records, not proof that a host or model complied.
+
+For a readable current assignment with the updated source binary:
+
+```sh
+soulmate run next .soulmate/runs/run.jsonl --text --config soulmate.json
+```
+
+`--text` presents the validated goal, stage/attempt, pending role and actor,
+result path/root, frozen check policy, and upstream artifact references marked
+as prior/current attempts. It does not copy artifact contents or memory into a
+summary. A terminal run reports its actual status and no pending assignments.
+Default `next` and `--json` retain their JSON packet; combining `--text` with
+`--json` is an error. Presentation is read-only and never executes displayed
+paths or goals. It reconstructs recorded work, not a host conversation.
+
+Human `run status` shows the current attempt and a concrete shell-quoted
+read-only `next --text` command when the assignment validates. Terminal or
+drifted runs instead point to inspection/recovery. Default `run inspect` JSON
+retains all attempts; it checks recorded history without revalidating current
+artifact or governing-input bytes. Keep these outputs private. Your project CI
+remains the executor and enforcement point for its own checks; a local report
+binding does not authenticate CI execution or replace branch protection.
 
 Use an exact run boundary to narrow configured maxima without editing config.
 This example uses the separate advanced fixture `examples/soulmate.json`; it

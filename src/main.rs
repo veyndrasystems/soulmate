@@ -19,6 +19,7 @@ mod memory_discovery;
 mod memory_policy;
 mod memory_selection;
 mod onboarding;
+mod presentation;
 mod producer;
 mod profile;
 mod project_commands;

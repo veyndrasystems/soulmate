@@ -445,8 +445,9 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
             "check-command",
             "proof-origin",
         ][..],
-        "next" | "inspect" => &["config", "json"][..],
-        "submit" => &["config", "outcome", "artifact", "artifact-root", "json"][..],
+        "next" => &["config", "json", "text"][..],
+        "inspect" => &["config", "json"][..],
+        "submit" => &["config", "outcome", "artifact", "artifact-root", "json", "event-id"][..],
         "record-check" => &[
             "config",
             "target",
@@ -474,6 +475,11 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
         }
     };
     args::assert_options("run", a, allowed)?;
+    for alternative in ["event-id", "text"] {
+        if a.flags.contains_key(alternative) && a.flags.contains_key("json") {
+            return Err(format!("--{alternative} and --json are mutually exclusive"));
+        }
+    }
     let value = match action {
         "start" => {
             args::assert_positionals("run start", a, 2)?;
@@ -535,12 +541,47 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
         }
         "status" => {
             args::assert_positionals("run status", a, 2)?;
-            let value = run::status(l, positional(a, 1, "run status requires LEDGER")?)
-                .map_err(|error| map_run_error(error, a.flags.contains_key("json")))?;
+            let ledger = positional(a, 1, "run status requires LEDGER")?;
+            let json_output = a.flags.contains_key("json");
+            let config = if json_output {
+                ""
+            } else {
+                a.options.get("config").map(String::as_str).map_or_else(
+                    || l.path.to_str().ok_or("configuration path is not valid UTF-8"),
+                    Ok,
+                )?
+            };
+            let value = run::status(l, ledger).map_err(|error| {
+                if !json_output && run::inspect(l, ledger).is_ok() {
+                    eprintln!(
+                        "Inspect: {}",
+                        crate::presentation::read_command("inspect", config, ledger)
+                    );
+                }
+                map_run_error(error, json_output)
+            })?;
             if a.flags.contains_key("json") {
                 print_json(&value)?;
             } else {
                 print_status(&value);
+                if value["status"] != "running" {
+                    println!("Guidance: this run is terminal; inspect its recorded outcome before choosing an explicit successor where supported.");
+                    println!("Inspect: {}", crate::presentation::read_command("inspect", config, ledger));
+                } else if value["artifact"]["status"] != "current" {
+                    println!("Guidance: artifact drift prevents progression. Inspect the recorded references and restore the exact recorded bytes before retrying.");
+                    println!("Inspect: {}", crate::presentation::read_command("inspect", config, ledger));
+                } else {
+                    match run::next(l, ledger) {
+                        Ok(next) if next["status"] == "running" => println!(
+                            "Next: {}",
+                            crate::presentation::read_command("next", config, ledger)
+                        ),
+                        _ => {
+                            println!("Guidance: no validated pending progression is available; inspect the run before recovery.");
+                            println!("Inspect: {}", crate::presentation::read_command("inspect", config, ledger));
+                        }
+                    }
+                }
             }
             return Ok(());
         }
@@ -606,7 +647,25 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
         _ => return Err("unsupported run action".into()),
     }
     .map_err(|error| map_run_error(error, a.flags.contains_key("json")))?;
-    print_json(&value)?;
+    if action == "start" {
+        if a.options.contains_key("check-command") {
+            eprintln!("Checked run: acceptance requires a caller-reported passing result for each current worker submission, bound to the frozen check command. The host executes the command; Soulmate records the report.");
+        } else {
+            eprintln!("Unchecked run: no check-result requirement is configured. Start with --check-command to require caller-reported checks before acceptance.");
+        }
+    }
+    if action == "submit" && a.flags.contains_key("event-id") {
+        println!(
+            "{}",
+            value["event"]["eventSha256"]
+                .as_str()
+                .expect("successful submission has a validated event hash")
+        );
+    } else if action == "next" && a.flags.contains_key("text") {
+        crate::presentation::print_next(&value)?;
+    } else {
+        print_json(&value)?;
+    }
     Ok(())
 }
 
@@ -659,7 +718,7 @@ fn map_run_error(error: String, json_output: bool) -> String {
 
 fn print_help() {
     println!(
-        "Soulmate {VERSION}\n\nUsage: soulmate <command> [options]\n\nCore: init, brief, run, check\nRun actions: start, next, submit, record-check, status, explain, report, inspect, supersede.\n\nRun 'soulmate help advanced' for lifecycle, recovery, migration, hooks, receipts, and optional execution convenience."
+        "Soulmate {VERSION}\n\nUsage: soulmate <command> [options]\n\nCore: init, brief, run, check\nRun actions: start, next, submit, record-check, status, explain, report, inspect, supersede.\nUse 'run next LEDGER --text' for readable pending assignments and 'run submit AGENT LEDGER --event-id' to capture the submitted event hash. Each output flag conflicts with --json; default JSON is unchanged.\n\nRun 'soulmate help advanced' for lifecycle, recovery, migration, hooks, receipts, and optional execution convenience."
     );
 }
 
@@ -715,6 +774,9 @@ fn print_status(value: &serde_json::Value) {
     }
     print_review_or_acceptance("Review", &value["review"]);
     print_review_or_acceptance("Acceptance", &value["acceptance"]);
+    if value["status"] != "running" || value["artifact"]["status"] != "current" {
+        return;
+    }
     match checks["status"].as_str() {
         Some("not_observed") => println!(
             "Guidance: run the configured check in its host and report the actual result for every worker target with run record-check."

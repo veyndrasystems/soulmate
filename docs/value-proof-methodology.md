@@ -26,7 +26,23 @@ Run the installed binary's disposable, token-free scenario:
 soulmate benchmark
 ```
 
-From source, the reproducible validation path is:
+For a complete checked-work journey on a tiny product input, use the separate
+[source example](first-checked-run.md#try-the-complete-example):
+
+```sh
+cargo build --locked
+SOULMATE_BIN=target/debug/soulmate ./scripts/demo-checked-work.sh
+```
+
+This shell fixture observes actual failed and passing check exits and scripts
+the worker, reviewer, and lead documents. It retrieves the rework assignment in
+a fresh CLI process and checks that the earlier worker document remains intact.
+It uses unreleased `--event-id`/`--text` source conveniences, removes its temporary
+project, and produces no proof export. The installed benchmark and registered
+scenario retain their existing claims and formats. Neither example is an
+external-user experiment or demonstrates conversation preservation.
+
+From source, the reproducible validation path for the registered proof is:
 
 ```sh
 cargo test --locked

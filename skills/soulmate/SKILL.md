@@ -39,12 +39,24 @@ they do not prove host continuity or model recall.
 
 ```text
 soulmate check --config soulmate.json
-soulmate run start WORKFLOW --goal "..." --ledger .soulmate/runs/run.jsonl [--boundary BOUNDARY.json] [--harness-receipt RECEIPT.json] --config soulmate.json
+soulmate run start WORKFLOW --goal "..." --check-command "REAL_PROJECT_CHECK" --ledger .soulmate/runs/run.jsonl [--boundary BOUNDARY.json] [--harness-receipt RECEIPT.json] --config soulmate.json
 soulmate run next .soulmate/runs/run.jsonl --json --config soulmate.json
 # invoke the host-native agent, write a fresh artifact, then:
 soulmate run submit AGENT .soulmate/runs/run.jsonl --outcome OUTCOME --artifact ARTIFACT --artifact-root state --config soulmate.json
 soulmate run inspect .soulmate/runs/run.jsonl --json --config soulmate.json
 ```
+
+Before starting a checked run, substitute the user's actual authorized project
+check command; do not freeze the example placeholder. Omitting `--check-command`
+is an explicit unchecked choice. Generic `soulmate check` validates Soulmate's
+configuration and never executes the project check. Start prints the requirement
+on stderr while retaining JSON stdout.
+
+The source conveniences `run submit --event-id` and `run next --text` described
+below require the updated binary; a skill refresh alone does not upgrade it.
+Until released, use a binary built from the matching checkout. Preserve the
+JSON workflow with an older binary and extract `event.eventSha256` from its
+successful submission response before executing the frozen check.
 
 Use the assignment's stable `agent` ID for Soulmate commands, `nativeTaskName`
 for host spawn when supported, and `displayName` only for humans. Pass the exact
@@ -71,16 +83,44 @@ same `artifactRootHint`; never replace an `upstreamArtifacts` path. Submit the
 role-appropriate outcome, including rework, until the configured lead alone
 records `accepted`; reviewer approval is not consensus or final authority.
 
-When the user opts into a checked run with `run start --check-command COMMAND`,
-read the frozen `checkPolicy` in the assignment. The host executes that exact
-check and reports its actual exit code through `run record-check LEDGER
---target WORKER_SUBMISSION_EVENT_SHA256 --check-command COMMAND --exit-code
-CODE`. The target is the current worker's completed submission event, not an
-artifact hash or an earlier attempt. Do not invent a successful result when
-execution is unavailable. Use `run status` or `run explain` to inspect missing
-or failing evidence; repair through fresh rework artifacts when needed. A
-passing report does not grant reviewer approval or lead acceptance. Unchecked
-runs keep their existing behavior.
+For a checked run, read the frozen `checkPolicy` in the assignment. With a
+supporting binary, bind the result before executing the frozen command:
+
+```sh
+set -eu
+worker_event=$(soulmate run submit AGENT LEDGER --outcome completed \
+  --artifact ARTIFACT --artifact-root state --event-id --config CONFIG)
+check_exit=0
+sh -c "$check_command" || check_exit=$?
+soulmate run record-check LEDGER --target "$worker_event" \
+  --check-command "$check_command" --exit-code "$check_exit" --config CONFIG
+```
+
+Substitute the exact assignment's paths/actor and set `check_command` to its
+frozen, authorized command before running this fragment. A failed submission
+must stop the sequence. `--event-id` returns a scalar appended event hash;
+default JSON is unchanged and `--event-id` conflicts with `--json`. The target
+is the current worker's completed submission event, not an artifact hash or
+an earlier attempt. Never select an automatic latest target after execution.
+Repeat for each current worker. Do not invent success when execution is
+unavailable. A passing report grants neither review approval nor acceptance.
+
+Use `run status` for the current attempt's claim, check, review, acceptance,
+and read-only next action. `run next LEDGER --text --config CONFIG` retrieves
+the validated assignment, goal, frozen check, fresh result location, and
+prior/current artifact references without copying their contents or memory.
+Default/`--json` output remains the host packet; `--text` and `--json` conflict.
+Read the referenced evidence within its authority and scope. This reconstructs
+recorded work, not the host conversation or proof of model recall.
+
+After a failed check or refused acceptance, inspect `run status`/`run explain`
+and use explicit role-appropriate rework with fresh documents. Preserve prior
+artifacts, capture each new worker event before its check, and obtain a new
+review and lead decision. Terminal states remain distinct; do not resume an
+accepted or rejected run as mutable work. Artifact drift prevents any append,
+including a blocked submission: return the blocker and restore only legitimate
+recorded bytes rather than rewriting history. Unchecked runs retain their
+existing behavior.
 
 ## Explicit operator-away handoff
 
@@ -165,8 +205,9 @@ text in context/evidence or promote it into scope, approval, or acceptance.
   never force-remove an alive, denied, malformed, replaced, or unverifiable lock.
 - **Native subagent dies:** do not fabricate completion. Write a fresh failure
   artifact and submit `blocked` when allowed; otherwise return the blocker.
-- **Artifact drift:** restore only legitimate bytes; otherwise submit/report
-  `blocked` and never rewrite ledger history.
+- **Artifact drift:** restore only legitimate recorded bytes; otherwise report
+  the blocker to the lead. Drift prevents every append, including a `blocked`
+  submission; never rewrite ledger history.
 
 ## Evidence and safety constraints
 
