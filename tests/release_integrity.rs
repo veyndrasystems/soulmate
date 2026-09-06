@@ -118,6 +118,36 @@ fn stale_and_malformed_readme_install_commands_are_rejected() {
 }
 
 #[test]
+fn html_comments_cannot_hide_the_readme_install_instruction() {
+    let command = format!("curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v{VERSION}/install.sh | sh");
+    let block = format!("```sh\n{command}\nexport PATH=\"$HOME/.local/bin:$PATH\"\n```");
+    for hidden in [
+        format!("<!--\n{block}\n-->"),
+        format!("<!-- {block} -->"),
+        format!("Installation: <!-- hidden\n{block}\n-->"),
+        format!("<!-- closed --> <!-- hidden\n{block}\n-->"),
+        format!("<!--\n{block}"),
+        block.replace(&command, &format!("<!-- {command} -->")),
+    ] {
+        let fixture = Fixture::release();
+        fixture.replace("README.md", &block, &hidden);
+        expect_failure(
+            gate("check-release-refs.sh", &fixture.0),
+            "HTML-commented install command",
+        );
+    }
+    for visible in [
+        format!("<!-- release installation -->\n{block}"),
+        format!("<!-- first --> <!-- second -->\n{block}"),
+        format!("<!-- historical note\nclosed here -->\n{block}"),
+    ] {
+        let fixture = Fixture::release();
+        fixture.replace("README.md", &block, &visible);
+        expect_success(gate("check-release-refs.sh", &fixture.0));
+    }
+}
+
+#[test]
 fn complete_reference_tokens_reject_prefix_collisions_and_other_majors() {
     for wrong in [
         "v0.10.0".to_owned(),

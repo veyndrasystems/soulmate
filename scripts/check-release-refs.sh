@@ -37,8 +37,28 @@ lock_version=$(awk '
 ' Cargo.lock)
 equal_version Cargo.lock "$lock_version" "$plain"
 
-grep -Fxq "curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/$current/install.sh | sh" README.md ||
-  fail "README.md is missing the current $current install command"
+# A literal command inside an HTML comment is not an installation instruction.
+# Keep the whole-line command requirement while tracking only HTML comments.
+awk -v command="curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/$current/install.sh | sh" '
+  {
+    if (!comment && $0 == command) found = 1
+    line = $0
+    while (length(line)) {
+      if (comment) {
+        end = index(line, "-->")
+        if (!end) break
+        line = substr(line, end + 3)
+        comment = 0
+      } else {
+        start = index(line, "<!--")
+        if (!start) break
+        line = substr(line, start + 4)
+        comment = 1
+      }
+    }
+  }
+  END { exit !found }
+' README.md || fail "README.md is missing the visible current $current install command"
 installer_version=$(sed -n 's/^version="${SOULMATE_VERSION:-\([^}]*\)}"$/\1/p' install.sh)
 equal_version install.sh "$installer_version" "$current"
 changelog_version=$(awk '/^## [0-9]/ { print $2; exit }' CHANGELOG.md)
