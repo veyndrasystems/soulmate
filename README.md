@@ -14,12 +14,38 @@ bounded assignment, artifact hashes, and transitions it can validate.
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.11.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.12.0/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
 The release is a single Linux x86_64 binary and also runs inside Ubuntu on WSL
 2. See the [Windows guide](docs/windows-wsl.md) for the supported WSL layout.
+
+## Check what “done” means
+
+In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.
+
+Try the complete, token-free example after installing:
+
+```sh
+soulmate benchmark
+```
+
+It creates a disposable project, records a failed check, refuses acceptance,
+then completes a fresh reviewed attempt while preserving the previous result.
+The example measures its own command count and elapsed execution. It does not
+measure human time saved or how often this happens in real projects.
+
+The host executes checks; Soulmate records their reported results against exact
+artifact identities. A passing check, reviewer approval, and lead acceptance
+remain separate. Use this when you need an inspectable acceptance record across
+attempts. It adds no OS sandbox or automatic proof that an agent ran tests.
+
+Follow the [proof and its limits](docs/value-proof-methodology.md), inspect the
+[claim registry](proof/claims.json), or export the example locally with
+`soulmate benchmark --output proof-local`.
+To enable the same guard in your own run, follow
+[checked acceptance](REFERENCE.md#checked-acceptance).
 
 ## Start with four commands
 

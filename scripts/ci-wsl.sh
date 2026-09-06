@@ -22,8 +22,9 @@ mkdir -p "$install_root/bin"
 install -m 0755 "$candidate" "$install_root/bin/soulmate"
 export PATH="$install_root/bin:$PATH"
 
-test "$(soulmate version)" = "0.11.0"
+test "$(soulmate version)" = "0.12.0"
 tmux -V >/dev/null
 "$checkout/scripts/onboarding-smoke.sh" "$install_root/bin/soulmate" >/dev/null
+SOULMATE_BIN="$install_root/bin/soulmate" "$checkout/scripts/run-value-proof-suite.sh" >/dev/null
 
 printf '%s\n' "WSL installed-path smoke passed"

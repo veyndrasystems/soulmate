@@ -32,6 +32,8 @@ mod run_assignment;
 mod run_error;
 mod run_ledger;
 mod run_state;
+mod run_value;
+mod value_benchmark;
 
 fn main() {
     let raw = std::env::args_os().skip(1).collect::<Vec<_>>();

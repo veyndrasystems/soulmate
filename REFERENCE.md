@@ -16,14 +16,14 @@ Install the supported release as a single Rust binary. Node.js, npm, Python,
 and Cargo are not required after installation:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.11.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.12.0/install.sh | sh
 soulmate init --mode portable
 soulmate brief worker --task "Describe the change you want to make" --config soulmate.json
 soulmate run start change --goal "Describe the bounded change" --ledger .soulmate/runs/run.jsonl --config soulmate.json
 soulmate check --config soulmate.json
 ```
 
-The v0.11.0 release artifact supports Linux x86_64. Windows is supported through
+The v0.12.0 release artifact supports Linux x86_64. Windows is supported through
 Ubuntu on WSL 2 using that Linux artifact and keeping the agent, Soulmate, and
 project inside the distribution; see the [Windows WSL 2 guide](docs/windows-wsl.md).
 There is no native Windows executable or native Windows away runner. macOS is
@@ -129,6 +129,62 @@ soulmate run submit lead .soulmate/runs/run.jsonl \
 Submissions are role-scoped evidence, not votes; matching outcomes do not prove
 consensus.
 
+### Checked acceptance
+
+Opt a new run into one frozen deterministic check command:
+
+```sh
+soulmate run start change --goal "Describe the bounded change" \
+  --ledger .soulmate/runs/checked.jsonl \
+  --check-command "cargo test --locked" --config soulmate.json
+```
+
+The native host performs and submits the normal assignments. After submitting a
+worker's exact artifact, run the configured check in the host and preserve its
+actual exit status, including failure:
+
+```sh
+check_exit=0
+cargo test --locked || check_exit=$?
+soulmate run record-check .soulmate/runs/checked.jsonl \
+  --target WORKER_SUBMISSION_EVENT_SHA256 \
+  --check-command "cargo test --locked" --exit-code "$check_exit" \
+  --config soulmate.json
+soulmate run status .soulmate/runs/checked.jsonl --config soulmate.json
+soulmate run explain .soulmate/runs/checked.jsonl --config soulmate.json
+```
+
+Use the `eventSha256` returned by the worker's successful submission as the
+target. The command string must match the start-time policy exactly. This
+records a caller report; it does not execute or authenticate the check. Repeat
+for each current worker result. Results from an old attempt cannot qualify a
+new one.
+
+A missing or failed current result prevents final acceptance. A refusal records
+its exact check evidence without appending an accepted submission. Existing
+artifact drift still refuses mutation without adding any run event. Rerun the
+check after repair and report the actual result, or request `rework` using the
+normal workflow and submit a fresh artifact. Passing checks and reviewer
+approval remain separate from the lead's final acceptance.
+
+Generate a local aggregate from explicit ledgers:
+
+```sh
+soulmate run report .soulmate/runs/checked.jsonl --config soulmate.json
+soulmate run report .soulmate/runs/checked.jsonl --json --config soulmate.json
+```
+
+Checked runs use run-event version 3. A checked successor retains its frozen
+check policy and source category. Ordinary starts keep v1, or v2 when a harness
+receipt is supplied; old ledgers are not rewritten. New readers inspect the
+frozen old fixtures. Old binaries reject v3, so retain a supporting binary for
+those ledgers instead of relabeling them as an earlier format.
+
+`--proof-origin synthetic` is reserved for intentionally seeded runs; the default
+checked-run category is `local_report`. Legacy ledgers without that metadata
+have unclassified origin. The [proof methodology](docs/value-proof-methodology.md)
+defines report interpretation and the token-free `soulmate benchmark` example.
+
 Output from an external planner or orientation tool may seed the task, but it
 is not assignment authority. Before starting a run, restate exact observe,
 write, and command limits in Soulmate configuration or a boundary manifest. If
@@ -146,7 +202,7 @@ files carrying Soulmate's ownership marker; unowned or conflicting files cause
 the command to refuse the update:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.11.0/install.sh | SOULMATE_VERSION=v0.11.0 sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.12.0/install.sh | SOULMATE_VERSION=v0.12.0 sh
 soulmate init --refresh-skills --root PATH
 ```
 
@@ -462,14 +518,14 @@ must be declared separately when you manage their projections with dotagents.
 For an existing project with `agents.toml`:
 
 ```text
-dotagents --project add veyndrasystems/soulmate --ref v0.11.0
+dotagents --project add veyndrasystems/soulmate --ref v0.12.0
 ```
 
 For a new dotagents-managed project:
 
 ```text
 dotagents --project init
-dotagents --project add veyndrasystems/soulmate --ref v0.11.0
+dotagents --project add veyndrasystems/soulmate --ref v0.12.0
 ```
 
 During `dotagents --project init`, select the hosts you use. `dotagents add`
@@ -595,7 +651,7 @@ ControlRoot and pass it only when creating an existing brief or plan receipt:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.11.0/schema/harness-manifest.schema.json",
+  "$schema": "https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.12.0/schema/harness-manifest.schema.json",
   "version": 1,
   "project": { "id": "my-project", "session": "codex-2026-08-30" },
   "harness": { "name": "my-harness", "version": "2026.08.30" },

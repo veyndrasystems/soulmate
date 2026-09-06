@@ -96,5 +96,8 @@ fn packet(state: &Value, agent: &Value, upstream: &[Value]) -> Value {
     if let Some(receipt) = state.get("harnessReceipt") {
         assignment["harnessReceipt"] = receipt.clone();
     }
+    if let Some(policy) = state.get("checkPolicy") {
+        assignment["checkPolicy"] = policy.clone();
+    }
     assignment
 }

@@ -115,6 +115,9 @@ fn hooks_command(a: &Arguments) -> Result<(), String> {
 }
 
 fn configured_command(command: &str, a: &Arguments) -> Result<(), String> {
+    if command == "benchmark" {
+        return benchmark_command(a);
+    }
     if !matches!(
         command,
         "check" | "brief" | "plan" | "verify" | "profile" | "memory" | "run" | "away" | "migrate"
@@ -133,6 +136,18 @@ fn configured_command(command: &str, a: &Arguments) -> Result<(), String> {
         "away" => away_command(&loaded, a),
         "migrate" => migrate_command(&loaded, a),
         _ => Err(format!("unknown command '{command}'")),
+    }
+}
+
+fn benchmark_command(a: &Arguments) -> Result<(), String> {
+    args::assert_options("benchmark", a, &["output", "json"])?;
+    args::assert_positionals("benchmark", a, 0)?;
+    let value = crate::value_benchmark::run(a.options.get("output").map(String::as_str))?;
+    if a.flags.contains_key("json") {
+        print_json(&value)
+    } else {
+        print!("{}", crate::value_benchmark::render(&value)?);
+        Ok(())
     }
 }
 
@@ -421,9 +436,28 @@ fn memory_transition(l: &config::Loaded, a: &Arguments, propose: bool) -> Result
 fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
     let action = positional(a, 0, "run requires an action")?;
     let allowed = match action {
-        "start" => &["config", "goal", "ledger", "boundary", "harness-receipt"][..],
+        "start" => &[
+            "config",
+            "goal",
+            "ledger",
+            "boundary",
+            "harness-receipt",
+            "check-command",
+            "proof-origin",
+        ][..],
         "next" | "inspect" => &["config", "json"][..],
         "submit" => &["config", "outcome", "artifact", "artifact-root", "json"][..],
+        "record-check" => &[
+            "config",
+            "target",
+            "check-command",
+            "exit-code",
+            "duration-ms",
+            "json",
+        ][..],
+        "status" => &["config", "json"][..],
+        "explain" => &["config", "event", "json"][..],
+        "report" => &["config", "json"][..],
         "supersede" => &[
             "config",
             "workflow",
@@ -431,26 +465,39 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
             "ledger",
             "boundary",
             "harness-receipt",
+            "check-command",
+            "proof-origin",
             "json",
         ][..],
         _ => {
-            return Err(
-                "run requires one action: start, next, submit, inspect, or supersede".into(),
-            )
+            return Err("run requires one action: start, next, submit, record-check, status, explain, report, inspect, or supersede".into())
         }
     };
     args::assert_options("run", a, allowed)?;
     let value = match action {
         "start" => {
             args::assert_positionals("run start", a, 2)?;
-            run::start(
-                l,
-                positional(a, 1, "run start requires WORKFLOW")?,
-                option(a, "goal", "run start requires --goal")?,
-                option(a, "ledger", "run start requires --ledger")?,
-                a.options.get("boundary").map(String::as_str),
-                a.options.get("harness-receipt").map(String::as_str),
-            )
+            let workflow = positional(a, 1, "run start requires WORKFLOW")?;
+            let goal = option(a, "goal", "run start requires --goal")?;
+            let ledger = option(a, "ledger", "run start requires --ledger")?;
+            let boundary = a.options.get("boundary").map(String::as_str);
+            let receipt = a.options.get("harness-receipt").map(String::as_str);
+            let check_command = a.options.get("check-command").map(String::as_str);
+            let proof_origin = a.options.get("proof-origin").map(String::as_str);
+            if check_command.is_none() && proof_origin.is_none() {
+                run::start(l, workflow, goal, ledger, boundary, receipt)
+            } else {
+                run::start_with_policy(
+                    l,
+                    workflow,
+                    goal,
+                    ledger,
+                    boundary,
+                    receipt,
+                    check_command,
+                    proof_origin,
+                )
+            }
         }
         "next" => {
             args::assert_positionals("run next", a, 2)?;
@@ -471,17 +518,90 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
             args::assert_positionals("run inspect", a, 2)?;
             run::inspect(l, positional(a, 1, "run inspect requires LEDGER")?)
         }
+        "record-check" => {
+            args::assert_positionals("run record-check", a, 2)?;
+            run::record_check(
+                l,
+                positional(a, 1, "run record-check requires LEDGER")?,
+                option(a, "target", "run record-check requires --target")?,
+                option(
+                    a,
+                    "check-command",
+                    "run record-check requires --check-command",
+                )?,
+                option(a, "exit-code", "run record-check requires --exit-code")?,
+                a.options.get("duration-ms").map(String::as_str),
+            )
+        }
+        "status" => {
+            args::assert_positionals("run status", a, 2)?;
+            let value = run::status(l, positional(a, 1, "run status requires LEDGER")?)
+                .map_err(|error| map_run_error(error, a.flags.contains_key("json")))?;
+            if a.flags.contains_key("json") {
+                print_json(&value)?;
+            } else {
+                print_status(&value);
+            }
+            return Ok(());
+        }
+        "explain" => {
+            args::assert_positionals("run explain", a, 2)?;
+            let value = run::explain(
+                l,
+                positional(a, 1, "run explain requires LEDGER")?,
+                a.options.get("event").map(String::as_str),
+            )
+            .map_err(|error| map_run_error(error, a.flags.contains_key("json")))?;
+            if a.flags.contains_key("json") {
+                print_json(&value)?;
+            } else {
+                print_explain(&value);
+            }
+            return Ok(());
+        }
+        "report" => {
+            if a.positional.len() < 2 {
+                return Err("run report requires at least one LEDGER".into());
+            }
+            let ledgers = a
+                .positional
+                .iter()
+                .skip(1)
+                .map(String::as_str)
+                .collect::<Vec<_>>();
+            let report = run::report(l, &ledgers)?;
+            if a.flags.contains_key("json") {
+                print_json(&report)?;
+            } else {
+                print!("{}", run::report_markdown(&report));
+            }
+            return Ok(());
+        }
         "supersede" => {
             args::assert_positionals("run supersede", a, 2)?;
-            run::supersede(
-                l,
-                positional(a, 1, "run supersede requires OLD_LEDGER")?,
-                option(a, "workflow", "run supersede requires --workflow")?,
-                option(a, "goal", "run supersede requires --goal")?,
-                option(a, "ledger", "run supersede requires --ledger")?,
-                a.options.get("boundary").map(String::as_str),
-                a.options.get("harness-receipt").map(String::as_str),
-            )
+            let old_ledger = positional(a, 1, "run supersede requires OLD_LEDGER")?;
+            let workflow = option(a, "workflow", "run supersede requires --workflow")?;
+            let goal = option(a, "goal", "run supersede requires --goal")?;
+            let ledger = option(a, "ledger", "run supersede requires --ledger")?;
+            let boundary = a.options.get("boundary").map(String::as_str);
+            let receipt = a.options.get("harness-receipt").map(String::as_str);
+            let check_command = a.options.get("check-command").map(String::as_str);
+            let proof_origin = a.options.get("proof-origin").map(String::as_str);
+            if check_command.is_none() && proof_origin.is_none() {
+                run::supersede(l, old_ledger, workflow, goal, ledger, boundary, receipt)
+            } else {
+                run::supersede_with_policy(
+                    l,
+                    old_ledger,
+                    workflow,
+                    goal,
+                    ledger,
+                    boundary,
+                    receipt,
+                    check_command,
+                    proof_origin,
+                )
+            }
         }
         _ => return Err("unsupported run action".into()),
     }
@@ -539,13 +659,13 @@ fn map_run_error(error: String, json_output: bool) -> String {
 
 fn print_help() {
     println!(
-        "Soulmate {VERSION}\n\nUsage: soulmate <command> [options]\n\nCore: init, brief, run, check\n\nRun 'soulmate help advanced' for lifecycle, recovery, migration, hooks, receipts, and optional execution convenience."
+        "Soulmate {VERSION}\n\nUsage: soulmate <command> [options]\n\nCore: init, brief, run, check\nRun actions: start, next, submit, record-check, status, explain, report, inspect, supersede.\n\nRun 'soulmate help advanced' for lifecycle, recovery, migration, hooks, receipts, and optional execution convenience."
     );
 }
 
 fn print_advanced_help() {
     println!(
-        "Soulmate {VERSION}\n\nAdvanced: bind, doctor, plan, verify, profile, migrate, memory (resolve/inspect/lifecycle), away, hooks, hook-protocol, hook-run, version\n\nRun 'soulmate migrate layout --config CONFIG' to inspect a legacy profile migration, then repeat with --apply. Use 'migrate paths' for canonical harness and state directories.\nRun 'soulmate run supersede OLD_LEDGER --workflow WORKFLOW --goal GOAL --ledger NEW_LEDGER' to create an explicit successor after configuration, profile, memory, boundary, or harness-receipt drift."
+        "Soulmate {VERSION}\n\nAdvanced: bind, doctor, plan, verify, profile, migrate, memory (resolve/inspect/lifecycle), away, hooks, hook-protocol, hook-run, version\n\nRun value proof: the host executes the configured check, then reports its actual result with 'run record-check'; use 'run status', 'run explain', and 'run report' for bounded evidence views.\n\nRun 'soulmate migrate layout --config CONFIG' to inspect a legacy profile migration, then repeat with --apply. Use 'migrate paths' for canonical harness and state directories.\nRun 'soulmate run supersede OLD_LEDGER --workflow WORKFLOW --goal GOAL --ledger NEW_LEDGER' to create an explicit successor after configuration, profile, memory, boundary, or harness-receipt drift."
     );
 }
 
@@ -555,4 +675,110 @@ fn print_json(value: &serde_json::Value) -> Result<(), String> {
         serde_json::to_string_pretty(value).map_err(|error| error.to_string())?
     );
     Ok(())
+}
+
+fn print_status(value: &serde_json::Value) {
+    println!(
+        "Run {}: {} (stage {}, attempt {})",
+        text_field(value, "runId"),
+        text_field(value, "status"),
+        scalar_field(value, "stage"),
+        scalar_field(value, "attempt")
+    );
+    let claim = &value["claim"];
+    println!(
+        "Claim: {} event={} artifact={}",
+        text_field(claim, "status"),
+        text_field(claim, "eventSha256"),
+        text_field(claim, "artifactSha256")
+    );
+    println!("Artifact: {}", text_field(&value["artifact"], "status"));
+    let checks = &value["checks"];
+    println!(
+        "Checks: {} (origin {}, observed {}, failed {}, missing {})",
+        text_field(checks, "status"),
+        text_field(checks, "origin"),
+        scalar_field(checks, "observedCount"),
+        scalar_field(checks, "failedCount"),
+        scalar_field(checks, "missingCount")
+    );
+    if let Some(targets) = checks["targets"].as_array() {
+        for target in targets {
+            println!(
+                "  target {}: {} check={} exit={}",
+                text_field(target, "targetEventSha256"),
+                text_field(target, "status"),
+                text_field(target, "checkEventSha256"),
+                scalar_field(target, "exitCode")
+            );
+        }
+    }
+    print_review_or_acceptance("Review", &value["review"]);
+    print_review_or_acceptance("Acceptance", &value["acceptance"]);
+    match checks["status"].as_str() {
+        Some("not_observed") => println!(
+            "Guidance: run the configured check in its host and report the actual result for every worker target with run record-check."
+        ),
+        Some("blocked") => println!(
+            "Guidance: repair or rework as needed, rerun the configured check in its host, report the actual result, then request review and lead acceptance."
+        ),
+        Some("passed") => println!(
+            "Guidance: checks passed; reviewer approval and lead acceptance remain separate authority steps."
+        ),
+        _ => {}
+    }
+}
+
+fn print_explain(value: &serde_json::Value) {
+    println!("Run {} explanation", text_field(value, "runId"));
+    let status = &value["status"];
+    println!(
+        "Status: {} (artifact {})",
+        text_field(status, "status"),
+        text_field(&status["artifact"], "status")
+    );
+    let protection = &value["protection"];
+    if protection.is_null() {
+        println!("Protection: none selected");
+    } else {
+        println!(
+            "Protection: {} reason={} actor={} event={}",
+            text_field(protection, "attemptedOutcome"),
+            text_field(protection, "reason"),
+            text_field(protection, "actor"),
+            text_field(protection, "eventSha256")
+        );
+        if let Some(evidence) = protection["checkEvidence"].as_array() {
+            for item in evidence {
+                println!(
+                    "  evidence target={} status={} check={} exit={}",
+                    text_field(item, "targetEventSha256"),
+                    text_field(item, "status"),
+                    text_field(item, "checkEventSha256"),
+                    scalar_field(item, "exitCode")
+                );
+            }
+        }
+    }
+    println!("Guidance: {}", text_field(value, "guidance"));
+}
+
+fn print_review_or_acceptance(label: &str, value: &serde_json::Value) {
+    println!(
+        "{label}: {} event={} artifact={}",
+        text_field(value, "status"),
+        text_field(value, "eventSha256"),
+        text_field(value, "artifactSha256")
+    );
+}
+
+fn text_field<'a>(value: &'a serde_json::Value, key: &str) -> &'a str {
+    value[key].as_str().unwrap_or("unknown")
+}
+
+fn scalar_field(value: &serde_json::Value, key: &str) -> String {
+    value
+        .get(key)
+        .filter(|value| !value.is_null())
+        .map_or_else(|| "unknown".to_owned(), ToString::to_string)
 }

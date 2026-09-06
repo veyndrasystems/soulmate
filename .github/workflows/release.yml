@@ -44,7 +44,10 @@ jobs:
       - name: Check release references
         run: ./scripts/check-release-refs.sh
       - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo test --locked
+      - name: Test behavior and immutable proof contracts
+        run: |
+          proof_base=$(git rev-parse --verify HEAD^)
+          VALUE_PROOF_BASE="$proof_base" cargo test --locked
       - name: Keep the public refusal demo truthful
         run: SOULMATE_BIN=target/debug/soulmate ./scripts/demo-refusal.sh
       - run: cargo audit

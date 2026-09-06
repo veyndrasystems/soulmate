@@ -1,11 +1,28 @@
 # Changelog
 
-## Unreleased
+## 0.12.0
+
+- Add opt-in checked acceptance: freeze a check command at run start and bind
+  caller-reported results to exact current worker submission events. Missing
+  or failed results prevent canonical acceptance, including during replay.
+  The host executes checks; reported success is not authenticated execution,
+  reviewer approval, or final acceptance.
+- Add status, explanation, and redacted local aggregate views, plus a
+  token-free `soulmate benchmark` scenario that reproduces refusal and fresh
+  rework recovery. Synthetic command counts and elapsed execution do not
+  establish human time saved or recurring production incidents.
+- Checked runs use run-event format 3. Ordinary v1/v2 runs keep their existing
+  format and read behavior. Older binaries reject v3; retain a compatible
+  binary to inspect checked evidence and never downgrade a ledger by editing
+  its version. No mandatory runtime or dependency is added.
+- Link the scoped public claim to its executable proof and pin versioned proof
+  schemas in CI. The minor version follows the existing invariant rule: a
+  configured failed-check counterexample previously accepted is now refused.
 
 - Strengthen contributor release-reference checks and pin the retained public
   ancestry in CI. Document the existing history boundary and separate retention
   rules from publication permission. Product behavior and version policy are
-  unchanged; this contributor-only increment does not create a new release.
+  unchanged by those contributor-only checks.
 
 ## 0.11.0
 

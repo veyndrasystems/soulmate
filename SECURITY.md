@@ -56,6 +56,34 @@ attempt identity without goal text. They are advisory names, not automatic
 writes. Every recorded upstream artifact remains immutable; a changed,
 deleted, or substituted prior artifact blocks resume and submission.
 
+## Checked-result evidence
+
+Opt-in run-v3 ledgers bind a frozen check command and source category to the
+run. `run record-check` consumes a caller-supplied exit status for an exact
+current worker submission. It does not execute that command, authenticate the
+caller, or prove that the host ran it. Neither a reported zero exit code nor a
+reviewer approval creates lead acceptance. The reducer checks this policy when
+replaying acceptance as well as when the CLI appends it.
+
+Check and refusal records use the same confined, locked run-append path. A
+check refusal can add factual protection evidence while leaving the canonical
+result unaccepted. Changed artifact bytes still prevent any new run event.
+These checks bind the recorded artifact set, not all project files or the full
+execution environment. Raw ledgers and status/explain output remain private
+operational evidence, including the configured command.
+
+Aggregate reports redact user-controlled text and separate explicitly synthetic
+runs, local caller reports, and legacy unclassified runs. They do not infer
+avoided loss, human attention, or false positives. Reported command duration is
+not a local measurement of human time. Export remains explicit; hashes are not
+anonymization.
+
+The fixed `benchmark` self-test invokes the same installed executable against
+new disposable fixtures. It does not execute user-provided commands or discover
+work in the current project. Its optional export creates a new local directory
+with synthetic ledgers and artifacts; it refuses to overwrite an existing
+output directory. No model or network call is part of the scenario.
+
 ## Content authority and instruction-like data
 
 Byte integrity and instruction authority are separate properties. A valid hash

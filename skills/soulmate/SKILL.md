@@ -71,6 +71,17 @@ same `artifactRootHint`; never replace an `upstreamArtifacts` path. Submit the
 role-appropriate outcome, including rework, until the configured lead alone
 records `accepted`; reviewer approval is not consensus or final authority.
 
+When the user opts into a checked run with `run start --check-command COMMAND`,
+read the frozen `checkPolicy` in the assignment. The host executes that exact
+check and reports its actual exit code through `run record-check LEDGER
+--target WORKER_SUBMISSION_EVENT_SHA256 --check-command COMMAND --exit-code
+CODE`. The target is the current worker's completed submission event, not an
+artifact hash or an earlier attempt. Do not invent a successful result when
+execution is unavailable. Use `run status` or `run explain` to inspect missing
+or failing evidence; repair through fresh rework artifacts when needed. A
+passing report does not grant reviewer approval or lead acceptance. Unchecked
+runs keep their existing behavior.
+
 ## Explicit operator-away handoff
 
 When the operator explicitly goes away while one Codex assignment is pending,

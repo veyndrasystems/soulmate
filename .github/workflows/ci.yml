@@ -23,7 +23,18 @@ jobs:
       - name: Keep experimental observations out of the product
         run: ./scripts/check-product-surface.sh
       - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo test --locked
+      - name: Test behavior and immutable proof contracts
+        env:
+          VALUE_PROOF_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # A new branch or tag has no previous ref; compare its first parent.
+          if [ "$VALUE_PROOF_BASE" = "0000000000000000000000000000000000000000" ]; then
+            VALUE_PROOF_BASE=$(git rev-parse --verify HEAD^)
+            export VALUE_PROOF_BASE
+          fi
+          cargo test --locked
+      - name: Reproduce the checked-acceptance claim
+        run: SOULMATE_BIN=target/debug/soulmate ./scripts/run-value-proof-suite.sh
       - name: Keep the public refusal demo truthful
         run: SOULMATE_BIN=target/debug/soulmate ./scripts/demo-refusal.sh
       - name: Exercise native tmux handoff
@@ -54,7 +65,18 @@ jobs:
         run: ./scripts/check-public-history.sh "$CANDIDATE_SHA"
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.75.0 --profile minimal && rustup default 1.75.0
-      - run: cargo test --locked
+      - name: Test behavior and immutable proof contracts
+        env:
+          VALUE_PROOF_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # A new branch or tag has no previous ref; compare its first parent.
+          if [ "$VALUE_PROOF_BASE" = "0000000000000000000000000000000000000000" ]; then
+            VALUE_PROOF_BASE=$(git rev-parse --verify HEAD^)
+            export VALUE_PROOF_BASE
+          fi
+          cargo test --locked
+      - name: Reproduce the checked-acceptance claim
+        run: SOULMATE_BIN=target/debug/soulmate ./scripts/run-value-proof-suite.sh
   windows-wsl:
     needs: rust
     runs-on: windows-2025

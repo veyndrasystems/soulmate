@@ -24,6 +24,31 @@ pub fn start(
     boundary: Option<&str>,
     harness_receipt: Option<&str>,
 ) -> Result<Value, String> {
+    start_with_policy(
+        loaded,
+        workflow,
+        goal,
+        ledger,
+        boundary,
+        harness_receipt,
+        None,
+        None,
+    )
+}
+
+/// Start a run with the optional, caller-reported deterministic check policy.
+/// Supplying no policy preserves the v1/v2 start API and persisted shape.
+#[allow(clippy::too_many_arguments)]
+pub fn start_with_policy(
+    loaded: &Loaded,
+    workflow: &str,
+    goal: &str,
+    ledger: &str,
+    boundary: Option<&str>,
+    harness_receipt: Option<&str>,
+    check_command: Option<&str>,
+    proof_origin: Option<&str>,
+) -> Result<Value, String> {
     if workflow.trim().is_empty() {
         return Err("workflow is required".into());
     }
@@ -35,6 +60,10 @@ pub fn start(
         selected_plan(envelope::plan(loaded, workflow, goal)?)?,
         boundary,
     )?;
+    let check_policy = crate::run_value::policy_from_cli(check_command, proof_origin)?;
+    if check_policy.is_some() && !has_worker_stage(&plan) {
+        return Err("checked run requires a workflow with at least one worker stage".into());
+    }
     if let Some(receipt) = harness_receipt {
         crate::receipt::for_run(loaded, receipt, &plan)?;
     }
@@ -60,8 +89,15 @@ pub fn start(
         } else {
             None
         };
+        let version = if check_policy.is_some() {
+            3
+        } else if reference.is_some() {
+            2
+        } else {
+            1
+        };
         let mut value = json!({
-            "version": 1,
+            "version": version,
             "kind": "run",
             "producer": crate::producer::evidence(),
             "action": "start",
@@ -74,8 +110,10 @@ pub fn start(
             "timestamp": timestamp
         });
         if let Some(reference) = reference {
-            value["version"] = json!(2);
             value["harnessReceipt"] = reference;
+        }
+        if let Some(policy) = &check_policy {
+            value["checkPolicy"] = policy.value();
         }
         let event = run_state::make_event(value);
         append(&path, &event, true, "")?;
@@ -130,11 +168,42 @@ pub fn submit(
             .ok_or_else(|| format!("agent '{agent}' is not currently pending"))?;
         let artifact_value = crate::run_artifact::evidence(loaded, artifact_root, artifact)?;
         let last = events.last().ok_or("run ledger has no head event")?;
-        let version = if state.get("harnessReceipt").is_some() {
+        let version = if state.get("checkPolicy").is_some() {
+            3
+        } else if state.get("harnessReceipt").is_some() {
             2
         } else {
             1
         };
+        if assignment["role"] == "lead" && outcome == "accepted" {
+            let assessment = crate::run_value::check_guard(&state)?;
+            if assessment.is_blocked() {
+                if assessment.has_refusal_evidence() {
+                    let timestamp = nondecreasing(&last["timestamp"])?;
+                    let protection = crate::run_value::protection_event(
+                        &state,
+                        agent,
+                        &assignment["stage"],
+                        &assignment["attempt"],
+                        last,
+                        &timestamp,
+                    )?;
+                    let protection = run_state::make_event(protection);
+                    let mut protected = events.clone();
+                    protected.push(protection.clone());
+                    run_state::reduce(&protected)?;
+                    append(&path, &protection, false, &source)?;
+                    return Err(format!(
+                        "acceptance refused: configured check evidence is {}",
+                        assessment.reason().unwrap_or("blocked")
+                    ));
+                }
+                return Err(
+                    "acceptance refused: checked worker completion or result is not observed"
+                        .into(),
+                );
+            }
+        }
         let event = run_state::make_event(json!({
             "version": version,
             "kind": "run",
@@ -165,11 +234,97 @@ pub fn submit(
     })
 }
 
+/// Record a caller-supplied deterministic check result for the exact current
+/// worker completion.  This function never executes `check_command`.
+pub fn record_check(
+    loaded: &Loaded,
+    ledger: &str,
+    target: &str,
+    check_command: &str,
+    exit_code: &str,
+    duration_ms: Option<&str>,
+) -> Result<Value, String> {
+    if check_command.trim().is_empty() {
+        return Err("--check-command requires a non-empty value".into());
+    }
+    if check_command.contains('\0') {
+        return Err("--check-command must not contain NUL bytes".into());
+    }
+    let exit_code = parse_nonnegative("--exit-code", exit_code)?;
+    let duration_ms = duration_ms
+        .map(|value| parse_nonnegative("--duration-ms", value))
+        .transpose()?;
+    let path = ledger_path(&loaded.state_root, ledger, false)?;
+    let targets = [path.path.as_path(), path.lock.as_path()];
+    crate::git_preflight::refuse_tracked_targets(&loaded.state_root, &targets)?;
+    with_lock(&path, || {
+        crate::git_preflight::refuse_tracked_targets(&loaded.state_root, &targets)?;
+        if claim_path(&path).exists() {
+            return Err("run has been superseded; no mutation was made".into());
+        }
+        let (_, events, source) = load_at(loaded, &path)?;
+        let state = run_state::reduce(&events)?;
+        if state["status"] != "running" {
+            return Err("run has already reached a terminal state; no mutation was made".into());
+        }
+        assert_no_drift(loaded, &state)?;
+        crate::run_artifact::assert_current(loaded, &state)?;
+        let policy = state
+            .get("checkPolicy")
+            .ok_or("run has no configured check policy")?;
+        let policy = crate::run_value::policy_from_value(policy, 0)
+            .map_err(|error| error.replacen("line 0", "state", 1))?;
+        if policy.command != check_command
+            || policy.command_sha256 != crate::hash::text(check_command)
+        {
+            return Err("check command does not match the configured run policy".into());
+        }
+        crate::run_value::validate_check_target(&state, target)?;
+        let last = events.last().ok_or("run ledger has no event head")?;
+        let mut value = json!({
+            "version": 3,
+            "kind": "run",
+            "producer": crate::producer::evidence(),
+            "action": "check",
+            "runId": state["runId"],
+            "targetEventSha256": target,
+            "checkCommand": check_command,
+            "checkCommandSha256": crate::hash::text(check_command),
+            "origin": policy.origin.as_str(),
+            "exitCode": exit_code,
+            "previousEventSha256": last["eventSha256"],
+            "timestamp": nondecreasing(&last["timestamp"])?
+        });
+        value["durationMs"] = duration_ms.map_or(Value::Null, |duration| json!(duration));
+        let event = run_state::make_event(value);
+        let mut all = events.clone();
+        all.push(event.clone());
+        let next_state = run_state::reduce(&all)?;
+        append(&path, &event, false, &source)?;
+        Ok(json!({
+            "valid": true,
+            "event": event,
+            "runId": next_state["runId"],
+            "status": next_state["status"],
+            "checks": crate::run_value::status(&next_state, Some(true))?["checks"]
+        }))
+    })
+}
+
+fn parse_nonnegative(option: &str, value: &str) -> Result<u64, String> {
+    if value.trim().is_empty() || value.starts_with('+') || value.starts_with('-') {
+        return Err(format!("{option} must be a non-negative integer"));
+    }
+    value
+        .parse::<u64>()
+        .map_err(|_| format!("{option} must be a non-negative integer"))
+}
+
 pub fn inspect(loaded: &Loaded, ledger: &str) -> Result<Value, String> {
     let (_, events, _) = load(loaded, ledger)?;
     let state = run_state::reduce(&events)?;
     predecessor(loaded, &events[0])?;
-    Ok(json!({
+    let mut result = json!({
         "valid": true,
         "runId": state["runId"],
         "workflow": state["workflow"],
@@ -178,7 +333,50 @@ pub fn inspect(loaded: &Loaded, ledger: &str) -> Result<Value, String> {
         "attempt": if state["status"] == "running" { state["attempt"].clone() } else { Value::Null },
         "events": events,
         "submissions": state["submissions"]
-    }))
+    });
+    if state.get("checkPolicy").is_some() {
+        result["assignments"] = state["assignments"].clone();
+    }
+    Ok(result)
+}
+
+/// Read-only current-state view with artifact/config revalidation.
+pub fn status(loaded: &Loaded, ledger: &str) -> Result<Value, String> {
+    let (_, events, _) = load(loaded, ledger)?;
+    let state = run_state::reduce(&events)?;
+    assert_no_drift(loaded, &state)?;
+    let artifact_current = artifact_current(loaded, &state)?;
+    predecessor(loaded, &events[0])?;
+    crate::run_value::status(&state, Some(artifact_current))
+}
+
+/// Read-only explanation for a run or one of its factual protection events.
+pub fn explain(loaded: &Loaded, ledger: &str, event_id: Option<&str>) -> Result<Value, String> {
+    let (_, events, _) = load(loaded, ledger)?;
+    let state = run_state::reduce(&events)?;
+    assert_no_drift(loaded, &state)?;
+    let artifact_current = artifact_current(loaded, &state)?;
+    predecessor(loaded, &events[0])?;
+    crate::run_value::explain_with_artifact(&state, event_id, artifact_current)
+}
+
+/// Generate a local redacted report from explicitly selected ledgers.  The
+/// report only contains hashes, counts, bounded statuses, and observed command
+/// durations; it never returns goals, commands, prompts, profiles, paths, or
+/// artifact bytes.
+pub fn report(loaded: &Loaded, ledgers: &[&str]) -> Result<Value, String> {
+    let mut states = Vec::with_capacity(ledgers.len());
+    for ledger in ledgers {
+        let (_, events, _) = load(loaded, ledger)?;
+        let state = run_state::reduce(&events)?;
+        predecessor(loaded, &events[0])?;
+        states.push(state);
+    }
+    crate::run_value::aggregate(&states)
+}
+
+pub fn report_markdown(report: &Value) -> String {
+    crate::run_value::markdown(report)
 }
 
 /// Start a fresh bounded run while atomically claiming one running or blocked predecessor.
@@ -190,6 +388,34 @@ pub fn supersede(
     new_ledger: &str,
     boundary: Option<&str>,
     harness_receipt: Option<&str>,
+) -> Result<Value, String> {
+    supersede_with_policy(
+        loaded,
+        old_ledger,
+        workflow,
+        goal,
+        new_ledger,
+        boundary,
+        harness_receipt,
+        None,
+        None,
+    )
+}
+
+/// Supersede a predecessor while carrying its checked policy forward by
+/// default.  Explicit policy arguments are available to the checked CLI
+/// surface, but an omitted policy cannot silently downgrade a checked run.
+#[allow(clippy::too_many_arguments)]
+pub fn supersede_with_policy(
+    loaded: &Loaded,
+    old_ledger: &str,
+    workflow: &str,
+    goal: &str,
+    new_ledger: &str,
+    boundary: Option<&str>,
+    harness_receipt: Option<&str>,
+    check_command: Option<&str>,
+    proof_origin: Option<&str>,
 ) -> Result<Value, String> {
     if workflow.trim().is_empty() {
         return Err("workflow is required".into());
@@ -224,6 +450,33 @@ pub fn supersede(
             selected_plan(envelope::plan(loaded, workflow, goal)?)?,
             boundary,
         )?;
+        let old_policy = old_state
+            .get("checkPolicy")
+            .map(|policy| crate::run_value::policy_from_value(policy, 0))
+            .transpose()
+            .map_err(|error| error.replacen("line 0", "state", 1))?;
+        let requested_policy = crate::run_value::policy_from_cli(check_command, proof_origin)?;
+        let check_policy: Option<crate::run_value::CheckPolicy> = match (
+            old_policy,
+            requested_policy,
+        ) {
+            (Some(old), None) => Some(old),
+            (None, requested) => requested,
+            (Some(old), Some(requested)) => {
+                if old != requested {
+                    return Err(
+                        "successor check policy differs from predecessor; choose an explicit new checked run"
+                            .into(),
+                    );
+                }
+                Some(old)
+            }
+        };
+        if check_policy.is_some() && !has_worker_stage(&plan) {
+            return Err(
+                "checked successor requires a workflow with at least one worker stage".into(),
+            );
+        }
         let old_rel = config::rel(&loaded.state_root, &old.expected)?;
         let old_sha = hash::text(&old_source);
         let head = old_events
@@ -268,8 +521,15 @@ pub fn supersede(
             "headEventSha256": claim.value["oldHeadEventSha256"],
             "configSha256": claim.value["oldConfigSha256"]
         });
+        let version = if check_policy.is_some() {
+            3
+        } else if harness_reference.is_some() {
+            2
+        } else {
+            1
+        };
         let mut event_value = json!({
-            "version": if harness_reference.is_some() { 2 } else { 1 },
+            "version": version,
             "kind": "run",
             "producer": crate::producer::evidence(),
             "action": "start",
@@ -284,6 +544,9 @@ pub fn supersede(
         });
         if let Some(reference) = harness_reference {
             event_value["harnessReceipt"] = reference;
+        }
+        if let Some(policy) = &check_policy {
+            event_value["checkPolicy"] = policy.value();
         }
         let event = run_state::make_event(event_value);
         let successor = if new.path.exists() {
@@ -313,6 +576,24 @@ fn result(events: &[Value]) -> Result<Value, String> {
         "attempt": state["attempt"],
         "assignments": crate::run_assignment::pending(&state)
     }))
+}
+
+fn has_worker_stage(plan: &Value) -> bool {
+    plan["stages"].as_array().is_some_and(|stages| {
+        stages.iter().any(|stage| {
+            stage["agents"]
+                .as_array()
+                .is_some_and(|agents| agents.iter().any(|agent| agent["role"] == "worker"))
+        })
+    })
+}
+
+fn artifact_current(loaded: &Loaded, state: &Value) -> Result<bool, String> {
+    match crate::run_artifact::assert_current(loaded, state) {
+        Ok(()) => Ok(true),
+        Err(error) if error.starts_with("artifact drift detected:") => Ok(false),
+        Err(error) => Err(error),
+    }
 }
 
 fn selected_plan(mut plan: Value) -> Result<Value, String> {

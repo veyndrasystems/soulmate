@@ -18,10 +18,14 @@ pub fn reduce(events: &[Value]) -> Result<Value, String> {
     let mut state = json!({
         "runId": first["runId"], "workflow": first["workflow"], "goal": first["goal"],
         "configSha256": first["configSha256"], "plan": first["plan"], "status": "running",
-        "currentStage": 1, "attempt": 1, "submissions": [], "events": events
+        "currentStage": 1, "attempt": 1, "submissions": [], "checks": [],
+        "protections": [], "events": events
     });
     if let Some(receipt) = first.get("harnessReceipt") {
         state["harnessReceipt"] = receipt.clone();
+    }
+    if let Some(policy) = first.get("checkPolicy") {
+        state["checkPolicy"] = policy.clone();
     }
     for (index, event) in events.iter().enumerate().skip(1) {
         validate_event(event, events.get(index - 1), index + 1)?;
@@ -31,7 +35,7 @@ pub fn reduce(events: &[Value]) -> Result<Value, String> {
                 index + 1
             ));
         }
-        apply_submission(&mut state, event)?;
+        apply_event(&mut state, event)?;
     }
     state["assignments"] = json!(crate::run_assignment::pending(&state));
     Ok(state)
@@ -42,7 +46,7 @@ pub fn validate_event(event: &Value, previous: Option<&Value>, line: usize) -> R
         .as_object()
         .ok_or_else(|| format!("invalid run ledger line {line}: event must be an object"))?;
     let version = event["version"].as_u64();
-    if !matches!(version, Some(1 | 2)) || event["kind"] != "run" {
+    if !matches!(version, Some(1..=3)) || event["kind"] != "run" {
         return Err(format!(
             "invalid run ledger line {line}: invalid event header"
         ));
@@ -55,12 +59,29 @@ pub fn validate_event(event: &Value, previous: Option<&Value>, line: usize) -> R
     if event
         .get("producer")
         .is_some_and(|producer| !crate::producer::valid(producer))
-        || (version == Some(2) && !event.get("producer").is_some_and(crate::producer::valid))
+        || (matches!(version, Some(2 | 3))
+            && !event.get("producer").is_some_and(crate::producer::valid))
     {
         return Err(format!("invalid run ledger line {line}: invalid producer"));
     }
-    if event["action"] != "start" && event["action"] != "submit" {
+    let action = event["action"].as_str().unwrap_or_default();
+    if !matches!(action, "start" | "submit" | "check" | "protect") {
         return Err(format!("invalid run ledger line {line}: invalid action"));
+    }
+    if previous.is_some() && action == "start" {
+        return Err(format!(
+            "invalid run ledger line {line}: start is only valid at the beginning"
+        ));
+    }
+    if previous.is_none() && action != "start" {
+        return Err(format!(
+            "invalid run ledger line {line}: ledger must begin with start"
+        ));
+    }
+    if version != Some(3) && matches!(action, "check" | "protect") {
+        return Err(format!(
+            "invalid run ledger line {line}: value-proof actions require version 3"
+        ));
     }
     if !is_sha(event["runId"].as_str()) {
         return Err(format!("invalid run ledger line {line}: invalid runId"));
@@ -95,8 +116,12 @@ pub fn validate_event(event: &Value, previous: Option<&Value>, line: usize) -> R
     }
     let shape = if event["action"] == "start" {
         validate_start_version(event, line, version.unwrap_or_default())
-    } else {
+    } else if event["action"] == "submit" {
         validate_submission(event, line)
+    } else if event["action"] == "check" {
+        crate::run_value::validate_check_event(event, line)
+    } else {
+        crate::run_value::validate_protection_event(event, line)
     };
     let action = event["action"]
         .as_str()
@@ -109,7 +134,7 @@ pub fn validate_start(event: &Value, line: usize) -> Result<(), String> {
 }
 
 fn validate_start_version(event: &Value, line: usize, version: u64) -> Result<(), String> {
-    if !matches!(version, 1 | 2) {
+    if !matches!(version, 1..=3) {
         return Err(format!(
             "invalid run ledger line {line}: invalid event version"
         ));
@@ -204,8 +229,31 @@ fn validate_start_version(event: &Value, line: usize, version: u64) -> Result<()
     if version == 2 {
         validate_harness_receipt(event.get("harnessReceipt"), line)?;
     } else if event.get("harnessReceipt").is_some() {
+        if version == 1 {
+            return Err(format!(
+                "invalid run ledger line {line}: v1 start must not contain harnessReceipt"
+            ));
+        }
+        validate_harness_receipt(event.get("harnessReceipt"), line)?;
+    }
+    if version == 3 {
+        let policy = event.get("checkPolicy").ok_or_else(|| {
+            format!("invalid run ledger line {line}: v3 start requires checkPolicy")
+        })?;
+        crate::run_value::policy_from_value(policy, line)?;
+        let has_worker = stages.iter().any(|stage| {
+            stage["agents"]
+                .as_array()
+                .is_some_and(|agents| agents.iter().any(|agent| agent["role"] == "worker"))
+        });
+        if !has_worker {
+            return Err(format!(
+                "invalid run ledger line {line}: checked run requires a worker stage"
+            ));
+        }
+    } else if event.get("checkPolicy").is_some() {
         return Err(format!(
-            "invalid run ledger line {line}: v1 start must not contain harnessReceipt"
+            "invalid run ledger line {line}: checkPolicy requires version 3"
         ));
     }
     Ok(())
@@ -305,6 +353,35 @@ pub fn validate_submission(event: &Value, line: usize) -> Result<(), String> {
     Ok(())
 }
 
+fn apply_event(state: &mut Value, event: &Value) -> Result<(), String> {
+    match event["action"].as_str() {
+        Some("submit") => apply_submission(state, event),
+        Some("check") => apply_check(state, event),
+        Some("protect") => apply_protection(state, event),
+        _ => Err("run event action is invalid".into()),
+    }
+}
+
+fn apply_check(state: &mut Value, event: &Value) -> Result<(), String> {
+    crate::run_value::validate_check_against_state(state, event, 0)
+        .map_err(|error| error.replacen("line 0", "state", 1))?;
+    state["checks"]
+        .as_array_mut()
+        .ok_or("run state checks are invalid")?
+        .push(event.clone());
+    Ok(())
+}
+
+fn apply_protection(state: &mut Value, event: &Value) -> Result<(), String> {
+    crate::run_value::validate_protection_against_state(state, event, 0)
+        .map_err(|error| error.replacen("line 0", "state", 1))?;
+    state["protections"]
+        .as_array_mut()
+        .ok_or("run state protections are invalid")?
+        .push(event.clone());
+    Ok(())
+}
+
 fn apply_submission(state: &mut Value, event: &Value) -> Result<(), String> {
     if state["status"] != "running" {
         return Err("run has already reached a terminal state".into());
@@ -345,6 +422,18 @@ fn apply_submission(state: &mut Value, event: &Value) -> Result<(), String> {
             "outcome '{}' is not allowed for this stage",
             event["outcome"]
         ));
+    }
+    if role == "lead" && outcome == "accepted" {
+        let assessment = crate::run_value::check_guard(state)?;
+        if assessment.is_blocked() {
+            let detail = assessment.reason().map_or(
+                "worker completion or check result is not observed",
+                |reason| reason,
+            );
+            return Err(format!(
+                "canonical acceptance requires passing checks ({detail})"
+            ));
+        }
     }
     state["submissions"]
         .as_array_mut()
@@ -421,6 +510,10 @@ fn reject_unknown(
         if version == 2 {
             allowed.push("harnessReceipt");
         }
+        if version == 3 {
+            allowed.push("harnessReceipt");
+            allowed.push("checkPolicy");
+        }
         return object
             .keys()
             .find(|key| !allowed.contains(&key.as_str()))
@@ -429,7 +522,7 @@ fn reject_unknown(
                     "invalid run ledger line {line}: unknown field '{key}'"
                 ))
             });
-    } else {
+    } else if action == "submit" {
         &[
             "version",
             "kind",
@@ -442,6 +535,42 @@ fn reject_unknown(
             "role",
             "outcome",
             "artifact",
+            "previousEventSha256",
+            "timestamp",
+            "eventSha256",
+        ]
+    } else if action == "check" {
+        &[
+            "version",
+            "kind",
+            "producer",
+            "action",
+            "runId",
+            "targetEventSha256",
+            "checkCommand",
+            "checkCommandSha256",
+            "origin",
+            "exitCode",
+            "durationMs",
+            "previousEventSha256",
+            "timestamp",
+            "eventSha256",
+        ]
+    } else {
+        &[
+            "version",
+            "kind",
+            "producer",
+            "action",
+            "runId",
+            "stage",
+            "attempt",
+            "actor",
+            "role",
+            "attemptedOutcome",
+            "reason",
+            "checkEvidence",
+            "origin",
             "previousEventSha256",
             "timestamp",
             "eventSha256",

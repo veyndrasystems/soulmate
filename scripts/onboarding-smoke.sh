@@ -33,5 +33,6 @@ invoke run start change --goal "First bounded handoff" \
   --ledger "$ledger" --config "$config" >/dev/null
 invoke run inspect "$ledger" --config "$config" >/dev/null
 invoke check --config "$config" >/dev/null
+invoke benchmark >/dev/null
 
 printf '%s\n' "onboarding smoke passed"
