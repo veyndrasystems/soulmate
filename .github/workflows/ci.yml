@@ -11,6 +11,10 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
+      - name: Preserve published Git ancestry
+        env:
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: ./scripts/check-public-history.sh "$CANDIDATE_SHA"
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.75.0 --profile minimal --component rustfmt --component clippy && rustup default 1.75.0
       - run: cargo fmt --check
@@ -44,6 +48,10 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
+      - name: Preserve published Git ancestry
+        env:
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: ./scripts/check-public-history.sh "$CANDIDATE_SHA"
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.75.0 --profile minimal && rustup default 1.75.0
       - run: cargo test --locked

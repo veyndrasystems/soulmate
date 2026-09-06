@@ -15,6 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Preserve published Git ancestry
+        run: ./scripts/check-public-history.sh
       - name: Require the release tag at the current main commit
         run: |
           git fetch --no-tags origin main:refs/remotes/origin/main

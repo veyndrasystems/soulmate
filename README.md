@@ -167,6 +167,7 @@ Persisted-format compatibility and release criteria are documented in
 ## Detailed reference
 
 - [Commands, workflows, recovery, and versioning](REFERENCE.md)
+- [Public history boundary and publication checks](docs/public-history.md)
 - [Onboarding by environment](docs/onboarding.md)
 - [Control-plane boundary](docs/agent-control-plane.md)
 - [Directory layout rationale](docs/soulmate-centered-layout.md)

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Strengthen contributor release-reference checks and pin the retained public
+  ancestry in CI. Document the existing history boundary and separate retention
+  rules from publication permission. Product behavior and version policy are
+  unchanged; this contributor-only increment does not create a new release.
+
 ## 0.11.0
 
 - Made native conversation preservation an explicit host-guidance invariant:
