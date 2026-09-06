@@ -230,7 +230,7 @@ fn recursive_scan_errors_are_not_treated_as_clean_results() {
 
 #[cfg(unix)]
 #[test]
-fn source_validation_rejects_broken_links_when_grep_suppresses_errors() {
+fn source_scan_does_not_depend_on_recursive_grep_link_or_error_behavior() {
     use std::os::unix::fs::PermissionsExt;
 
     let fixture = Fixture::release();
@@ -245,7 +245,20 @@ fn source_validation_rejects_broken_links_when_grep_suppresses_errors() {
     let shim = bin.join("grep");
     fs::write(
         &shim,
-        b"#!/bin/sh\ncase \"$1\" in\n  -R*)\n    printf recursive > \"$SOULMATE_TEST_GREP_CALLED\"\n    \"$SOULMATE_TEST_REAL_GREP\" \"$@\" 2>/dev/null\n    status=$?\n    if test \"$status\" -gt 1; then exit 0; fi\n    exit \"$status\"\n    ;;\nesac\nexec \"$SOULMATE_TEST_REAL_GREP\" \"$@\"\n",
+        br#"#!/bin/sh
+case "$1" in
+  -R*|-r*)
+    printf recursive > "$SOULMATE_TEST_GREP_CALLED"
+    # Model a recursive scan silently omitting linked sources and their errors.
+    exit 0
+    ;;
+  -InE)
+    printf explicit > "$SOULMATE_TEST_GREP_CALLED"
+    if test -f "$SOULMATE_TEST_GREP_ERROR"; then exit 2; fi
+    ;;
+esac
+exec "$SOULMATE_TEST_REAL_GREP" "$@"
+"#,
     )
     .unwrap();
     fs::set_permissions(&shim, fs::Permissions::from_mode(0o755)).unwrap();
@@ -253,23 +266,35 @@ fn source_validation_rejects_broken_links_when_grep_suppresses_errors() {
     let path =
         std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&old_path))).unwrap();
     let called = fixture.0.join("grep-called");
+    let read_error = fixture.0.join("grep-error");
     let run = || {
         gate_command("check-release-refs.sh", &fixture.0, &[])
             .env("PATH", &path)
             .env("SOULMATE_TEST_REAL_GREP", real_grep.trim())
             .env("SOULMATE_TEST_GREP_CALLED", &called)
+            .env("SOULMATE_TEST_GREP_ERROR", &read_error)
             .output()
             .unwrap()
     };
+    // A file with no matching references exercises grep status 1 as success.
+    fs::write(fixture.0.join("docs/no-reference"), "ordinary source\n").unwrap();
     expect_success(run());
-    assert!(called.is_file(), "control must reach recursive grep");
-    fs::remove_file(&called).unwrap();
+    assert_eq!(fs::read_to_string(&called).unwrap(), "explicit");
     std::os::unix::fs::symlink("missing-reference", fixture.0.join("docs/broken-link")).unwrap();
     expect_failure(run(), "grep may silently skip broken links");
-    assert!(
-        !called.exists(),
-        "validation must fail before recursive grep"
-    );
+    fs::remove_file(fixture.0.join("docs/broken-link")).unwrap();
+
+    let reference = fixture.0.join("linked-reference");
+    fs::write(&reference, format!("release v{VERSION}\n")).unwrap();
+    std::os::unix::fs::symlink("../linked-reference", fixture.0.join("docs/readable-link"))
+        .unwrap();
+    expect_success(run());
+    fs::write(&reference, "release v1.0.0\n").unwrap();
+    expect_failure(run(), "grep may silently skip readable source links");
+
+    fs::write(&reference, format!("release v{VERSION}\n")).unwrap();
+    fs::write(&read_error, "fail explicit scan\n").unwrap();
+    expect_failure(run(), "explicit grep read errors must propagate");
 }
 
 #[cfg(unix)]

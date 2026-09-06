@@ -78,25 +78,23 @@ equal_version scripts/ci-wsl.sh "$wsl_version" "$plain"
 
 # Historical CHANGELOG entries are deliberately outside the current-reference scan.
 set -- README.md REFERENCE.md install.sh docs examples schema scripts src
-# BSD and GNU grep differ on dangling links. Validate the same traversal first,
-# following readable links while preserving the existing .git directory exclusion.
-invalid_sources=$(find -L "$@" -type d -name .git -prune -o -exec sh -c '
-  failed=0
+# Enumerate with find: recursive grep differs across hosts in whether it follows
+# links. Validate and scan these explicit paths, preserving the .git exclusion.
+refs=$(find -L "$@" -type d -name .git -prune -o -exec sh -c '
   for source do
     if ! test -r "$source" || { test -d "$source" && ! test -x "$source"; }; then
-      printf "%s\n" "$source"
-      failed=1
+      printf "missing or unreadable scan source: %s\n" "$source" >&2
+      exit 1
+    fi
+    test ! -d "$source" || continue
+    if grep -InE "v[0-9]+\.[0-9]+\.[0-9]+" /dev/null "$source"; then
+      :
+    else
+      status=$?
+      test "$status" = 1 || exit "$status"
     fi
   done
-  exit "$failed"
-' sh {} +) || fail 'release-source traversal failed'
-test -z "$invalid_sources" || fail "missing or unreadable scan sources: $invalid_sources"
-if refs=$(grep -RInE --exclude-dir=.git 'v[0-9]+\.[0-9]+\.[0-9]+' "$@"); then
-  :
-else
-  status=$?
-  test "$status" = 1 || fail 'release-reference scan failed'
-fi
+' sh {} +) || fail 'release-source traversal or reference scan failed'
 printf '%s\n' "$refs" | awk -v current="$current" '
   {
     line = $0
