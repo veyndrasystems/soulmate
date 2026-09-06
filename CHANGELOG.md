@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.12.1-rc.1
+
+- Preview the optional `run submit --event-id` and `run next --text` forms,
+  checked-start guidance, read-only next actions, and executable rework example.
+  Default JSON and persisted formats retain their existing contracts.
+- Lead the README with an existing-host task and real check. Bundle guidance
+  for concise results with inspectable evidence, and describe initialization
+  as preparing skills rather than activating agents.
+- Report the bounded native/Soulmate pilots, including a real bug first found
+  by the native baseline and missed by an initially accepted Soulmate run.
+  These results do not establish better code or lower operator cost.
+- This is a prerelease of compatible presentation additions. The current stable
+  version policy does not classify these additions; no new product invariant
+  or stable-policy change is claimed. Stable 0.12.0 remains available, with its
+  JSON workflow. Upgrade the binary before using the new flags, then explicitly
+  refresh managed skills. No persisted migration is required.
+
 ## 0.12.0
 
 - Add opt-in checked acceptance: freeze a check command at run start and bind

@@ -14,6 +14,25 @@ delegation/review, resumability, or deterministic handoff evidence. Ordinary
 single-agent work proceeds directly. Soulmate launches no model, provider,
 subagent, scheduler, or arbitrary command.
 
+## Answer the user's work question
+
+Keep the user in their existing conversation: what still needs doing before
+the configured lead can accept this change? Use the task, check command, native
+roles, and permissions already supplied. Resolve missing scope or authority with
+its owner; do not make the user copy protocol JSON or carry event hashes.
+
+Handle the run sequence below through the existing host. Report the changed
+result, actual check result when available (otherwise unknown), reviewer finding,
+and the pending action or recorded lead decision. A failed check, reviewer rework,
+artifact drift, and a final run require their distinct recovery paths. Link the
+relevant evidence so the user can inspect it without reading the whole ledger.
+Keep worker completion, reported check, reviewer approval, and lead acceptance
+separate even in a short answer. Acceptance does not prove bug-free code.
+
+Explain an internal concept only when it affects the user's next decision.
+This presentation rule grants no new authority and does not replace the exact
+assignment, raw evidence, failure branches, or existing host workflow.
+
 ## Native conversation continuity
 
 Keep the existing root host conversation. Role selection, a brief, run
@@ -52,11 +71,10 @@ is an explicit unchecked choice. Generic `soulmate check` validates Soulmate's
 configuration and never executes the project check. Start prints the requirement
 on stderr while retaining JSON stdout.
 
-The source conveniences `run submit --event-id` and `run next --text` described
-below require the updated binary; a skill refresh alone does not upgrade it.
-Until released, use a binary built from the matching checkout. Preserve the
-JSON workflow with an older binary and extract `event.eventSha256` from its
-successful submission response before executing the frozen check.
+The preview conveniences `run submit --event-id` and `run next --text` require
+the matching preview binary; a skill refresh alone does not upgrade it. Preserve
+the JSON workflow with an older 0.12.0 binary and extract `event.eventSha256`
+from its successful submission response before executing the frozen check.
 
 Use the assignment's stable `agent` ID for Soulmate commands, `nativeTaskName`
 for host spawn when supported, and `displayName` only for humans. Pass the exact

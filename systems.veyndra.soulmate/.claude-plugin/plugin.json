@@ -1,6 +1,6 @@
 {
   "name": "soulmate",
-  "version": "0.12.0",
+  "version": "0.12.1-rc.1",
   "description": "Bounded coding-agent handoffs and memory governance evidence.",
   "author": { "name": "Veyndra Systems", "url": "https://github.com/veyndrasystems" },
   "repository": "https://github.com/veyndrasystems/soulmate",

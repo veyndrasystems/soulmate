@@ -2,9 +2,10 @@
 
 The first successful outcome is the same everywhere: inspect a completion
 claim, its check and review, the lead decision, and earlier results after
-rework. Start with the [complete checked-work example](first-checked-run.md),
-then use the same sequence with your own check and documents. Model execution
-remains in your existing host. Read the [authority boundary](../REFERENCE.md#authority-boundary)
+rework. [Ask your existing host](#ask-your-existing-host-to-manage-the-run) to
+handle a real change, or inspect the model-free
+[checked-work example](first-checked-run.md). Model execution remains in your
+existing host. Read the [authority boundary](../REFERENCE.md#authority-boundary)
 and [privacy limits](../SECURITY.md) before using real project data.
 
 ## Choose the storage mode
@@ -32,6 +33,41 @@ soulmate init --mode local \
 
 Portable mode prepares project-local Codex and Claude discovery copies. Local
 mode keeps those copies with ControlRoot instead of adding them to ProductRoot.
+
+## Ask your existing host to manage the run
+
+After initialization, have your host read the generated Soulmate skill and
+check that the project's worker and reviewer map to the native agents you
+already use. Review that project configuration once; keep their existing role
+definitions and host permissions. In local mode, give the host the path to
+ControlRoot's `soulmate.json` and skill because they are outside the product.
+
+Then describe the work in your existing conversation, for example:
+
+> Use Soulmate for this bounded change: **describe the change**. Use my
+> configured native worker and reviewer, and check it with **the real project
+> test command**. Handle the handoffs and records. Show me what changed, what
+> the check and reviewer found, and whether the lead accepted the result.
+
+The host can retrieve assignments, carry submission IDs, use fresh report
+paths, execute the configured check, and record its actual result. These are
+host operations, not instructions for you to copy JSON or maintain a second
+task list. Scope changes and decisions still follow the configured
+[authority boundary](../REFERENCE.md#authority-boundary); missing permission
+or an unavailable native agent requires a real resolution.
+
+This path works with the stable 0.12.0 JSON commands and with the preview,
+without a Rust build. The bundled skill describes the handoff; your host
+executes it. The preview adds optional `--event-id` and `--text` conveniences;
+they are not prerequisites for host-managed work. Configuration and skill discovery alone do not prove
+that an agent ran: inspect the actual native result and the recorded check.
+
+For an existing failed run, give the host its ledger path and ask it to inspect
+the pending work and recover within the approved scope. A failed check needs
+fresh work and review; a changed artifact or governing input needs its
+[specific recovery procedure](../REFERENCE.md#run-and-recovery). Finish with
+the result, remaining blocker if any, and the next decision you actually own.
+Ordinary single-agent work can continue without a run.
 
 ## Keep the host you already use
 
@@ -70,15 +106,16 @@ plugin links, not host activation. Soulmate itself does not need dotagents.
 
 ## Verify before using a real project
 
-From this checkout, build and run the complete disposable example:
+With the installed preview binary, run the complete disposable example from
+the matching checkout:
 
 ```sh
-cargo build --locked
-SOULMATE_BIN=target/debug/soulmate ./scripts/demo-checked-work.sh
+SOULMATE_BIN=soulmate ./scripts/demo-checked-work.sh
 ```
 
-The new `--event-id` and `--text` options used by this flow are source changes
-pending release; use the built binary until a release includes them. The script
+The preview includes the `--event-id` and `--text` options used here. To build
+from source instead, run `cargo build --locked` and use
+`SOULMATE_BIN=target/debug/soulmate`. The script
 runs a real check on a tiny input, records its failure, observes refused
 acceptance, requests rework, retrieves the assignment in a fresh process, then
 repairs, checks, reviews, and accepts. All actor documents are scripted and the

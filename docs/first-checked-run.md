@@ -10,18 +10,18 @@ local evidence can establish.
 
 ## Try the complete example
 
-The new `run submit --event-id` and `run next --text` options in this guide are
-source-checkout conveniences pending release. Build this checkout first; the
-pinned release installer does not acquire unpublished changes. Building needs
-Rust/Cargo; running the example then needs the binary and standard POSIX shell
-tools, with no jq, Python, model, or account.
-
-From the Soulmate checkout:
+Use the pinned preview binary from the README and the matching source checkout
+for the script. Running it needs only the binary and standard POSIX shell tools,
+with no jq, Python, model, or account:
 
 ```sh
-cargo build --locked
-SOULMATE_BIN=target/debug/soulmate ./scripts/demo-checked-work.sh
+SOULMATE_BIN=soulmate ./scripts/demo-checked-work.sh
 ```
+
+Alternatively, build this checkout with Rust/Cargo and set
+`SOULMATE_BIN=target/debug/soulmate`. The older stable 0.12.0 binary lacks the
+`--event-id` and `--text` options used by this example; use its JSON workflow
+for host-managed tasks or upgrade the binary before trying this script.
 
 The [executable example](../scripts/demo-checked-work.sh) creates its own
 temporary project and always removes it on exit. It writes `message.txt` with
@@ -53,11 +53,10 @@ bundle, use `soulmate benchmark` and read the
 
 ## Use your own project
 
-Use the built binary for the commands below. From the Soulmate source checkout,
-make its absolute binary path available in this shell before changing directory:
+Use the installed preview binary for the commands below. If you built from
+source instead, add its absolute binary directory to PATH before changing directory:
 
 ```sh
-export PATH="$(pwd)/target/debug:$PATH"
 soulmate version
 printf 'Project directory: '
 IFS= read -r project_dir
