@@ -59,8 +59,14 @@ pub(crate) fn init(arguments: &Arguments) -> Result<(), String> {
         path.to_str()
             .ok_or("configuration path is not valid UTF-8")?,
     );
+    let skill = path
+        .parent()
+        .ok_or("configuration path has no parent")?
+        .join(".agents/skills/soulmate/SKILL.md");
+    let quoted_skill =
+        crate::presentation::shell_quote(skill.to_str().ok_or("skill path is not valid UTF-8")?);
     println!(
-        "Created {}\nPrepared project skills for Codex and Claude: Soulmate{coffee}.\nNext (replace YOUR_TEST_COMMAND with a real project check command):\n  soulmate brief worker --task \"Describe the change you want to make\" --config={quoted_config}\n  soulmate run start change --goal \"Describe the bounded change\" --check-command \"YOUR_TEST_COMMAND\" --ledger .soulmate/runs/run.jsonl --config={quoted_config}\n  soulmate check --config={quoted_config}\nThe host executes the frozen check command and reports its actual result. 'soulmate check' validates configuration, profiles, and declared boundaries; it does not run project tests.",
+        "Created {}\nPrepared project skills for Codex and Claude: Soulmate{coffee}.\n\nAsk your existing coding agent:\n  Read the generated Soulmate skill at {quoted_skill}. Use configuration {quoted_config}.\n  Review my task scope and native worker/reviewer mapping, then use Soulmate for TASK with the real check command TEST_COMMAND. Handle the records and tell me what still needs doing before acceptance.\nReplace TASK and TEST_COMMAND. Setup does not start agents or grant host permissions.\n\nCLI reference (replace YOUR_TEST_COMMAND with a real project check command):\n  soulmate brief worker --task \"Describe the change you want to make\" --config={quoted_config}\n  soulmate run start change --goal \"Describe the bounded change\" --check-command \"YOUR_TEST_COMMAND\" --ledger .soulmate/runs/run.jsonl --config={quoted_config}\n  soulmate check --config={quoted_config}\nThe host executes the frozen check command and reports its actual result. 'soulmate check' validates configuration, profiles, and declared boundaries; it does not run project tests.",
         path.display()
     );
     Ok(())

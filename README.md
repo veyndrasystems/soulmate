@@ -4,49 +4,82 @@ It verifies what you asked an agent to do and what came back, in the same record
 
 **What still needs doing before I can accept this change?**
 
-Use your existing coding agents to answer that question through a failed check,
-rework, review, and a final decision. Soulmate keeps the connections between
-those results so your host can show what is pending and retrieve earlier work.
+For builders whose agents say “done” while checks still fail, or whose work is
+hard to pick up after a pause. Soulmate connects the task, submitted work,
+check, review, and decision so your existing agents can retrieve what remains.
+
+**See it happen:** a worker claims completion, a check fails, and acceptance is
+refused. After rework, a fresh checked and reviewed attempt is accepted; the
+earlier attempt remains available.
 
 [![Rust primary CI](https://github.com/veyndrasystems/soulmate/actions/workflows/ci.yml/badge.svg)](https://github.com/veyndrasystems/soulmate/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/veyndrasystems/soulmate)](https://github.com/veyndrasystems/soulmate/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## Use it for your next change
+## Install and see the result
 
-This **preview release** includes the checked-work conveniences below. Install
-the Linux x86_64 binary, also usable inside Ubuntu on WSL 2. It needs
-no account, API key, or language runtime after installation. Your existing
-agent host still supplies the models, execution, and permissions.
+This **preview release** runs on Linux x86_64, including Ubuntu on WSL 2.
+The first experiment needs no account, API key, model, project configuration,
+or language runtime. Your real work continues in your existing agent host.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.12.1-rc.1/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.12.1-rc.2/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The installer verifies the release archive checksum. Initialization prepares
-configuration and profiles in `soulmate.json` and `soulmate/`, private ignored
-state in `.soulmate/`, and project skills for Codex and Claude. It installs no
-hooks. Review the declared scope, native worker/reviewer mapping, and host
-permissions once; [local mode](REFERENCE.md#repository-modes) keeps setup
-outside the product checkout.
+The installer verifies the release archive checksum. Now run the small,
+model-free experiment from any directory:
 
 ```sh
-soulmate init --root .
+soulmate benchmark
 ```
 
-In your existing agent conversation, ask:
+Success starts with `False-completion proof passed (14/14 assertions).`
+The experiment actually invokes Soulmate in a disposable project and reports:
 
-> Use Soulmate for **this change**, with my configured native worker and
-> reviewer. Run **my real project test command**. Handle the handoffs and
-> records, then tell me what changed and what still needs doing before the
-> lead can accept it.
+```text
+Attempt 1: worker claimed completion; check failed (exit 1); reviewer approved; lead acceptance refused.
+Rework: preserved the previous attempt for the next assignment.
+Attempt 2: check passed (exit 0); a fresh reviewed attempt was accepted by the lead.
+```
 
-Replace the bold text with your task and check. Have the host read the generated
-Soulmate skill; [host setup](docs/onboarding.md#ask-your-existing-host-to-manage-the-run)
-explains discovery. The host handles assignment lookup, fresh reports, and check
-records. You supply the task and the decisions you own. Ordinary single-agent
-work can proceed without a run.
+It leaves your current project untouched and removes its temporary project.
+To keep inspectable records, rerun with `soulmate benchmark --output NEW_DIRECTORY`.
+This is a scripted configuration-repair task with real command exit codes;
+actors are simulated. It demonstrates the protection, not time saved or agent
+quality. [Inspect the experiment and its limits](docs/value-proof-methodology.md).
+
+In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.
+
+**The useful result:** a failed check stays unresolved even when the worker
+says “completed” and the reviewer says “approved.” Rework keeps earlier results
+connected to the task. A passing check still needs review and a lead decision.
+
+## Use it for your next change
+
+In your project directory, initialize portable setup. This writes reviewable
+configuration and profiles to `soulmate.json` and `soulmate/`, private ignored
+state to `.soulmate/`, and skills for Codex and Claude. It installs no hooks.
+If setup must stay outside your checkout, use [local mode](REFERENCE.md#repository-modes).
+
+```sh
+soulmate init --mode portable --root .
+```
+
+Initialization prints a handoff with the actual configuration and skill paths.
+Give it to your existing coding agent, replacing the task and test command:
+
+> Read the generated Soulmate skill. Use Soulmate for **this change**, with
+> **my real project test command**. Review the task scope and my native
+> worker/reviewer mapping first. Handle the handoffs and records, then tell me
+> what changed and what still needs doing before the lead can accept it.
+
+Review the declared scope, native agent mapping, and host permissions once.
+Your host supplies models and execution; setup does not start agents or grant
+permissions. [Host setup](docs/onboarding.md#ask-your-existing-host-to-manage-the-run)
+explains discovery and local-mode paths. You supply the task and the decisions
+you own; the host handles assignment lookup, fresh reports, and check records.
+Ordinary single-agent work can proceed without a run.
 
 A useful answer identifies the changed result, the reported check, the review,
 and the pending action or lead decision, with references available for inspection.
@@ -55,36 +88,11 @@ The core path underneath is `init -> brief -> run -> check`.
 `soulmate check` validates configuration, profiles, and declared boundaries;
 it does not run your project tests.
 
-## See the protection before using a model
-
-```sh
-soulmate benchmark
-```
-
-Success starts with `False-completion proof passed (14/14 assertions).`
-This token-free synthetic fixture uses a disposable project. It measures
-prepared checks, not human time or agent effectiveness. [Inspect its evidence](docs/value-proof-methodology.md).
-
-The [scripted checked-work example](docs/first-checked-run.md#try-the-complete-example)
-shows the fuller outcome below. These are recorded results, not literal CLI output:
-
-| Attempt | Worker claim | Reported check | Reviewer | Lead decision | Earlier artifacts |
-| --- | --- | --- | --- | --- | --- |
-| 1 | completed | failed (exit 1) | approved | acceptance refused, rework requested | kept |
-| 2 | completed | passed (exit 0) | approved | accepted | attempt 1 still recorded |
-
-In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.
-
-A reviewer approval cannot override that failure. The first acceptance is refused with:
-
-```text
-soulmate: acceptance refused: configured check evidence is check_failed
-```
-
-The preview binary supports `--event-id` and `--text`. Run the full example
-from the matching checkout with `SOULMATE_BIN=soulmate ./scripts/demo-checked-work.sh`;
-building from source is optional. The earlier stable 0.12.0 binary supports
-the host-managed JSON workflow but does not recognize these two flags.
+For a longer example with a one-file product check, run the
+[scripted checked-work example](docs/first-checked-run.md#try-the-complete-example)
+from the matching checkout: `SOULMATE_BIN=soulmate ./scripts/demo-checked-work.sh`.
+The preview supports its `--event-id` and `--text` flags; stable 0.12.0 supports
+the host-managed JSON workflow but does not recognize those two flags.
 
 ## When work fails or changes
 

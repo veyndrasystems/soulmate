@@ -106,8 +106,21 @@ plugin links, not host activation. Soulmate itself does not need dotagents.
 
 ## Verify before using a real project
 
-With the installed preview binary, run the complete disposable example from
-the matching checkout:
+Start with the installed binary, from any directory:
+
+```sh
+soulmate benchmark
+```
+
+No checkout, model, or project initialization is required. The disposable
+configuration-repair fixture observes a real command failure, refused acceptance,
+preserved earlier work, and a freshly checked and reviewed accepted attempt.
+Its temporary project is removed; your current project stays untouched.
+Use `soulmate benchmark --output NEW_DIRECTORY` to retain the inspectable
+[bounded proof](value-proof-methodology.md). Human time and agent quality are
+not measured by this scripted experiment.
+
+For the longer one-file product example, use the matching source checkout:
 
 ```sh
 SOULMATE_BIN=soulmate ./scripts/demo-checked-work.sh
@@ -115,15 +128,11 @@ SOULMATE_BIN=soulmate ./scripts/demo-checked-work.sh
 
 The preview includes the `--event-id` and `--text` options used here. To build
 from source instead, run `cargo build --locked` and use
-`SOULMATE_BIN=target/debug/soulmate`. The script
-runs a real check on a tiny input, records its failure, observes refused
-acceptance, requests rework, retrieves the assignment in a fresh process, then
-repairs, checks, reviews, and accepts. All actor documents are scripted and the
-temporary project is removed. No model or user project is involved.
-
-The separate `soulmate benchmark` works with an installed binary supporting that
-command and retains its [bounded proof meaning](value-proof-methodology.md).
-The focused [artifact-drift example](../scripts/demo-refusal.sh) remains available.
+`SOULMATE_BIN=target/debug/soulmate`. The script records a failing product check,
+observes refused acceptance, requests rework, retrieves the assignment in a
+fresh process, then repairs, checks, reviews, and accepts. Actor documents are
+scripted and its temporary project is removed. The focused
+[artifact-drift example](../scripts/demo-refusal.sh) remains available.
 
 Next initialize a second disposable project and confirm the host sees the
 generated skill; discovery controls differ by host release. A pending

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.12.1-rc.2
+
+- Lead with the existing setup-free experiment: `soulmate benchmark` runs a disposable
+  configuration-repair example with real local checks and scripted actors.
+  Its readable result shows the worker claim, failed check, reviewer approval,
+  refused lead acceptance, rework, and the fresh accepted attempt.
+- Lead the README with the installed-binary experiment, then an explicit
+  `soulmate init --mode portable` project setup and a handoff naming the
+  generated skill and configuration for the existing coding-agent host.
+  Setup does not activate agents or grant host permissions.
+- Exercise the literal README journey in a Git-initialized fixture while
+  preserving the user's project and the explicit Git initialization guard.
+- Preserve commands, JSON, proof scenarios, and persisted formats. Stable
+  0.12.0 remains available; this preview correction adds no product invariant,
+  stable-policy change, or migration. Synthetic checks establish observed
+  refusal and recovery, not human time savings or universal installation payback.
+
 ## 0.12.1-rc.1
 
 - Preview the optional `run submit --event-id` and `run next --text` forms,

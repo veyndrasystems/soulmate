@@ -73,8 +73,9 @@ fn benchmark_human_output_explains_the_bounded_result() {
     assert!(output.status.success(), "{}", text(&output));
     let rendered = String::from_utf8(output.stdout).expect("human output should be UTF-8");
     assert!(rendered.contains("False-completion proof passed"));
-    assert!(rendered.contains("failed check"));
-    assert!(rendered.contains("refused canonical acceptance"));
+    assert!(rendered.contains("worker claimed completion; check failed (exit 1); reviewer approved; lead acceptance refused"));
+    assert!(rendered.contains("check passed (exit 0)"));
+    assert!(rendered.contains("accepted by the lead"));
     assert!(rendered.contains("preserved the previous attempt"));
     assert!(rendered.contains("fresh reviewed attempt"));
     assert!(rendered.contains("Source: synthetic"));

@@ -97,6 +97,16 @@ fn local_mode_separates_control_product_state_and_preserves_git_status() {
         output_text(&initialized)
     );
     let initialized_text = output_text(&initialized);
+    let skill = control.join(".agents/skills/soulmate/SKILL.md");
+    assert!(skill.is_file());
+    assert!(initialized_text.contains(skill.to_str().unwrap()));
+    assert!(initialized_text.contains(control.join("soulmate.json").to_str().unwrap()));
+    assert!(
+        initialized_text
+            .find("Ask your existing coding agent")
+            .unwrap()
+            < initialized_text.find("CLI reference").unwrap()
+    );
     let brief = initialized_text.find("soulmate brief").unwrap();
     let run = initialized_text.find("soulmate run start").unwrap();
     let check = initialized_text.find("soulmate check").unwrap();

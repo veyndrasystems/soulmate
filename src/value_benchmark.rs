@@ -72,7 +72,7 @@ pub fn render(value: &Value) -> Result<String, String> {
         .as_u64()
         .ok_or("benchmark result has no automated elapsed time")?;
     Ok(format!(
-        "False-completion proof passed ({passed}/{} assertions).\n\nThe fixture observed a failed check, refused canonical acceptance, preserved the previous attempt, and accepted a fresh reviewed attempt after repair.\n\nSource: synthetic. CLI invocations: {invocations}. Automated elapsed time: {elapsed} ms. Human interaction time: unmeasured.\n",
+        "False-completion proof passed ({passed}/{} assertions).\n\nTask: repair an incomplete project configuration. Scripted actors; real local checks.\nAttempt 1: worker claimed completion; check failed (exit 1); reviewer approved; lead acceptance refused.\nRework: preserved the previous attempt for the next assignment.\nAttempt 2: check passed (exit 0); a fresh reviewed attempt was accepted by the lead.\n\nThe fixture ran without a model or setup in your project. To inspect the records, rerun with --output followed by a new directory path.\n\nSource: synthetic. CLI invocations: {invocations}. Automated elapsed time: {elapsed} ms. Human interaction time: unmeasured.\n",
         assertions.len()
     ))
 }
