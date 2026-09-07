@@ -8,6 +8,8 @@ use std::process::Command;
 const IGNORED: &[&str] = &[".git", "node_modules", ".cache", "coverage", "target"];
 const ALLOWED_NAME: &str = "Veyndra Systems";
 const ALLOWED_EMAIL: &str = "veyndra-operator@users.noreply.github.com";
+const GITHUB_COMMITTER_NAME: &str = "GitHub";
+const GITHUB_COMMITTER_EMAIL: &str = "noreply@github.com";
 
 type Findings = BTreeSet<(String, String)>;
 
@@ -54,7 +56,8 @@ fn scan(root: &Path) -> Findings {
                 "--all",
                 "HEAD",
                 "--full-history",
-                "--pretty=format:%H%x00%an%x00%ae%x00%cn%x00%ce%x00",
+                "--use-mailmap",
+                "--pretty=format:%H%x00%aN%x00%aE%x00%cn%x00%ce%x00",
             ],
         );
         let patches = git(
@@ -359,24 +362,35 @@ fn scan_metadata(bytes: &[u8], ignored_commit: Option<&[u8]>, findings: &mut Fin
         if ignored_commit.is_some_and(|ignored| sha == ignored) {
             continue;
         }
-        for (name, email) in [(commit[1], commit[2]), (commit[3], commit[4])] {
+        for (name, email, committer) in
+            [(commit[1], commit[2], false), (commit[3], commit[4], true)]
+        {
             let name = String::from_utf8_lossy(name);
             let email = String::from_utf8_lossy(email).trim().to_ascii_lowercase();
-            if name.trim() != ALLOWED_NAME {
-                add(
-                    findings,
-                    "public-identity-name-mismatch",
-                    "git-history:commit-metadata",
-                );
+            let canonical = name.trim() == ALLOWED_NAME && email == ALLOWED_EMAIL;
+            let github_committer = committer
+                && name.trim() == GITHUB_COMMITTER_NAME
+                && email == GITHUB_COMMITTER_EMAIL;
+            if !canonical && !github_committer {
+                if name.trim() != ALLOWED_NAME {
+                    add(
+                        findings,
+                        "public-identity-name-mismatch",
+                        "git-history:commit-metadata",
+                    );
+                }
+                if email != ALLOWED_EMAIL {
+                    add(
+                        findings,
+                        "public-identity-email-mismatch",
+                        "git-history:commit-metadata",
+                    );
+                }
             }
-            if email != ALLOWED_EMAIL {
-                add(
-                    findings,
-                    "public-identity-email-mismatch",
-                    "git-history:commit-metadata",
-                );
-            }
-            if !email.ends_with("@users.noreply.github.com") && !email.contains("@noreply.") {
+            if !github_committer
+                && !email.ends_with("@users.noreply.github.com")
+                && !email.contains("@noreply.")
+            {
                 add(
                     findings,
                     "non-noreply-author-email",
@@ -451,6 +465,87 @@ fn publication_privacy_gate_passes_the_repository() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let findings = scan(root);
     assert!(findings.is_empty(), "privacy findings: {findings:?}");
+}
+
+#[test]
+fn mailmap_accepts_only_role_specific_github_squash_identities() {
+    let root = temp("mailmap");
+    fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(".mailmap"),
+        root.join(".mailmap"),
+    )
+    .unwrap();
+    fs::write(root.join("notes.txt"), "clean\n").unwrap();
+    assert!(Command::new("git")
+        .args(["-C", root.to_str().unwrap(), "init", "-q"])
+        .status()
+        .unwrap()
+        .success());
+    assert!(Command::new("git")
+        .args(["-C", root.to_str().unwrap(), "add", "."])
+        .status()
+        .unwrap()
+        .success());
+    assert!(Command::new("git")
+        .args([
+            "-C",
+            root.to_str().unwrap(),
+            "-c",
+            "user.name=GitHub",
+            "-c",
+            "user.email=noreply@github.com",
+            "commit",
+            "-qm",
+            "canonical squash identity",
+            "--author",
+            "veyndrasystems <287204764+veyndrasystems@users.noreply.github.com>",
+        ])
+        .status()
+        .unwrap()
+        .success());
+    assert!(scan(&root).is_empty());
+
+    let github_author = format!(
+        "commit\0{GITHUB_COMMITTER_NAME}\0{GITHUB_COMMITTER_EMAIL}\0{ALLOWED_NAME}\0{ALLOWED_EMAIL}\0"
+    );
+    let mut github_author_findings = Findings::new();
+    scan_metadata(github_author.as_bytes(), None, &mut github_author_findings);
+    assert!(github_author_findings
+        .iter()
+        .any(|(category, _)| category == "public-identity-name-mismatch"));
+    assert!(github_author_findings
+        .iter()
+        .any(|(category, _)| category == "public-identity-email-mismatch"));
+
+    fs::write(root.join("notes.txt"), "outsider\n").unwrap();
+    assert!(Command::new("git")
+        .args(["-C", root.to_str().unwrap(), "add", "notes.txt"])
+        .status()
+        .unwrap()
+        .success());
+    assert!(Command::new("git")
+        .args([
+            "-C",
+            root.to_str().unwrap(),
+            "-c",
+            "user.name=other-account",
+            "-c",
+            "user.email=123456+other-account@users.noreply.github.com",
+            "commit",
+            "-qm",
+            "unrelated identity",
+        ])
+        .status()
+        .unwrap()
+        .success());
+    let findings = scan(&root);
+    assert!(findings
+        .iter()
+        .any(|(category, _)| category == "public-identity-name-mismatch"));
+    assert!(findings
+        .iter()
+        .any(|(category, _)| category == "public-identity-email-mismatch"));
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -558,6 +653,9 @@ fn verified_github_pull_merge_does_not_replace_parent_identity_checks() {
     assert!(unfiltered
         .iter()
         .any(|(category, _)| category == "public-identity-name-mismatch"));
+    assert!(unfiltered
+        .iter()
+        .any(|(category, _)| category == "non-noreply-author-email"));
 
     let parents = format!("{head} {parent} 3333333333333333333333333333333333333333\n");
     let ignored = verified_pull_request_merge(
