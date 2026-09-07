@@ -77,11 +77,6 @@ review and a lead decision.
 
 ## Use it for your next change
 
-If your existing native setup already handles these handoffs reliably, the
-extra record may not justify another installation. See the [bounded participation
-findings](docs/participation-validation.md) for exercised protections and the
-limits of the evidence.
-
 In your project directory, initialize portable setup. This writes reviewable
 configuration and profiles to `soulmate.json` and `soulmate/`, private ignored
 state to `.soulmate/`, and skills for Codex and Claude. It installs no hooks.
@@ -163,5 +158,5 @@ artifacts. Remove optional hooks first while the binary is available.
 - [Repair or resume](docs/repair-a-run.md) · [Translate the terminology](docs/glossary.md)
 - [Optional memory, hooks, and receipts](docs/optional-surfaces.md)
 - [Windows and WSL 2](docs/windows-wsl.md) · [Commands and versioning](REFERENCE.md)
-- [Proof methodology](docs/value-proof-methodology.md) · [Claim registry](proof/claims.json)
+- [Usage findings](docs/participation-validation.md) · [Proof methodology](docs/value-proof-methodology.md) · [Claim registry](proof/claims.json)
 - [Security](SECURITY.md) · [License](LICENSE)

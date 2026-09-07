@@ -3,8 +3,8 @@
 This review separates gaps in the teaching and installation experience from
 limitations the protocol already states and checks. Its fixed baseline is
 `243d7817f37a12c208db0bbca5da291a6d16bf12` (package 0.12.1-rc.2).
-The current source contains an unreleased candidate; implementation and test
-results do not establish successful installation of public macOS assets.
+The changes from that review shipped in `v0.12.1-rc.3` from source snapshot
+`4199ebd`. Platform evidence is summarized in the [platform support details](platform-support.md) and [public release workflow](https://github.com/veyndrasystems/soulmate/actions/runs/34094355184).
 
 ## Six findings against the baseline
 
