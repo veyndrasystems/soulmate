@@ -2,10 +2,11 @@
 
 ## 0.12.1-rc.3
 
-- Preview native macOS archive and installer targets for `aarch64-apple-darwin` and `x86_64-apple-darwin`; release readiness remains `NOT_READY` pending compatibility, independent review, exact CI, and installed-asset checks.
+- Preview native macOS archive and installer targets for `aarch64-apple-darwin` and `x86_64-apple-darwin`. At reviewed source snapshot `6911dbb`, private CI passed native build, packaging, and installed-archive checks for Linux x86_64 and both Mac architectures, with WSL exercising the Linux artifact; public `v0.12.1-rc.3` archive and installation verification remains pending because the public release/assets are not established here.
 - Show current worker claims, host-reported checks, reviewer findings, and actual lead decisions in the human status and explanation views. A protocol refusal remains distinct from lead rejection; machine JSON and persisted records retain their existing shape.
 - Add read-only skill diagnostics and documentation navigation and guidance. No schema, authority, or stable-policy change is claimed; no persisted migration is required.
-- This entry records the candidate status without asserting that native or public CI has passed.
+- Frame the preview as a conditional choice for teams that want an inspectable acceptance record after handoffs or rework. Existing native worker/reviewer spawn capability must be confirmed by the coordinating host before a run; a profile, task name, or plan-only brief is not proof, and an unavailable tool returns pending work without a substitute executor. This is host guidance, not binary enforcement.
+- This entry records candidate validation and host guidance; it does not assert publication, user acceptance, installation payback, or net benefit.
 
 ## Public tags and format readers
 

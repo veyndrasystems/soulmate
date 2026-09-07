@@ -57,7 +57,15 @@ they do not prove host continuity or model recall.
 ## Run sequence
 
 Use one uninterrupted sequential host context; retain complete JSON per
-mutation. Default one-worker checked run:
+mutation. Before `run start`, the coordinating context must verify that the
+actual host session exposes the native worker and reviewer spawn tools required
+by the selected workflow. A profile, task name, or plan-only brief is not native
+capability evidence. If either tool is unavailable, return the limitation and
+pending assignment to the existing lead or operator without starting a
+substitute executor. Do not repeat a diagnostic brief, use shell `codex exec`
+or `soulmate away`, rename the task, impersonate a role, or add a new
+permission. This is host guidance; Soulmate does not detect or mechanically
+enforce this preflight. Default one-worker checked run:
 
 1. Init if needed; run `soulmate check --json --config CONFIG`.
 2. Freeze exact authorized check; pass it with goal/ledger/config to `run start`.

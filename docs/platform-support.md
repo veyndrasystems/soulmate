@@ -1,8 +1,11 @@
 # Install the binary for your platform
 
-The current source is an unreleased preview candidate. The matrix below names
-its required targets and validation gates; macOS installed support is pending
-successful native CI and public-asset installation checks.
+The current source at reviewed snapshot `6911dbb` is an unreleased preview
+candidate. Private CI for this snapshot passed native build, package, and
+installed-archive checks for Linux x86_64 and macOS on Apple Silicon and Intel;
+WSL exercised the Linux artifact. Public `v0.12.1-rc.3` archive retrieval and
+installation remain unverified, and this page does not assert that public
+release or its assets are available.
 
 Use the pinned installer in the [README](../README.md#install-and-see-the-result).
 It selects an archive from the operating system and architecture, checks its
@@ -11,20 +14,20 @@ is needed to run the installed binary or `soulmate benchmark`.
 
 | Installed target | Release archive target | Validation boundary |
 | --- | --- | --- |
-| Linux x86_64 / amd64 | `x86_64-unknown-linux-gnu` | Native Linux build, tests, packaged installation and first use. |
-| Ubuntu on WSL 2 | `x86_64-unknown-linux-gnu` | Keep project, agent host, and Soulmate in the same Ubuntu distribution. |
-| macOS on Apple Silicon | `aarch64-apple-darwin` | Native macOS 15 build, tests, packaged installation and first use. |
-| macOS on Intel | `x86_64-apple-darwin` | Native macOS 15 build, tests, packaged installation and first use. |
+| Linux x86_64 / amd64 | `x86_64-unknown-linux-gnu` | Private native CI passed build, tests, packaged installation and first use; public archive/install verification remains pending. |
+| Ubuntu on WSL 2 | `x86_64-unknown-linux-gnu` | Private CI exercised the Linux artifact; keep project, agent host, and Soulmate in the same Ubuntu distribution. |
+| macOS on Apple Silicon | `aarch64-apple-darwin` | Private native macOS 15 CI passed build, tests, packaging and installer exercise; public archive/install verification remains pending. |
+| macOS on Intel | `x86_64-apple-darwin` | Private native macOS 15 CI passed build, tests, packaging and installer exercise; public archive/install verification remains pending. |
 
 The [CI](../.github/workflows/ci.yml) and
 [release workflow](../.github/workflows/release.yml) require both native Mac
 architectures. Older macOS versions have not been validated by this matrix.
 Cross-compilation alone is not installation evidence.
 
-Each archive has a checksum and GitHub artifact provenance. The release
-publisher rechecks transferred archives and matches each separately published
-executable to its archive payload. These checks are not Apple Developer ID
-signing or notarization.
+The candidate packaging path includes an archive checksum and GitHub artifact
+provenance check. A future release publisher must recheck transferred archives
+and match each separately published executable to its archive payload. These
+checks are not Apple Developer ID signing or notarization.
 
 Native Windows and other Linux architectures are unsupported. The installer
 rejects unsupported operating-system/architecture pairs before fetching an

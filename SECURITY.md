@@ -255,8 +255,11 @@ the final check cannot be excluded without host-wide locking. If a later rename
 fails or another process edits settings concurrently, inspect status before
 retrying.
 
-The supported release artifact is Linux x86_64; macOS is tested from source
-only and no macOS binary is published. Optional hooks invoke
+Platform support and package-validation status are maintained in the
+[platform support details](docs/platform-support.md). That table distinguishes
+private native packaging evidence from public archive and installation
+verification; it is the authoritative platform matrix for this preview.
+Optional hooks invoke
 `soulmate` by `PATH`, with a fail-open shell guard and a five-second native host
 timeout.
 `hooks apply` refuses to install when that executable is not currently

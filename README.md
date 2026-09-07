@@ -4,9 +4,9 @@ It verifies what you asked an agent to do and what came back, in the same record
 
 **What still needs doing before I can accept this change?**
 
-For builders whose agents say “done” while checks still fail, or whose work is
-hard to pick up after a pause. Soulmate connects the task, submitted work,
-check, review, and decision so your existing agents can retrieve what remains.
+Keep your configured team’s agreed task, check, review, and decision together.
+Use Soulmate when you want to inspect what “done” was based on after a handoff
+or rework.
 
 **See it happen:** a worker claims completion, a check fails, and acceptance is
 refused. After rework, a fresh checked and reviewed attempt is accepted; the
@@ -63,9 +63,9 @@ This is a scripted configuration-repair task with real command exit codes;
 actors are simulated. It demonstrates the protection, not time saved or agent
 quality. [Inspect the experiment and its limits](docs/value-proof-methodology.md).
 
-That intermediate state is also the handoff point for an existing host: it can
-retrieve the configured review assignment with the current check and earlier
-attempt evidence, then carry out the agreed remaining work.
+Your existing host can retrieve that pending review with the current check
+and earlier attempt evidence. Carrying it out requires the host’s native
+agent tools; if unavailable, the work remains pending. See [host setup](docs/onboarding.md#ask-your-existing-host-to-manage-the-run).
 
 In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.
 
@@ -76,6 +76,11 @@ unresolved even when the worker says “completed” and the reviewer says
 review and a lead decision.
 
 ## Use it for your next change
+
+If your existing native setup already handles these handoffs reliably, the
+extra record may not justify another installation. See the [bounded participation
+findings](docs/participation-validation.md) for exercised protections and the
+limits of the evidence.
 
 In your project directory, initialize portable setup. This writes reviewable
 configuration and profiles to `soulmate.json` and `soulmate/`, private ignored
@@ -95,8 +100,10 @@ Give it to your existing coding agent, replacing the task and test command:
 Review the declared scope, native agent mapping, and host permissions once.
 Your host supplies models and execution; setup does not start agents or grant
 permissions. [Host setup](docs/onboarding.md#ask-your-existing-host-to-manage-the-run)
-explains discovery and local-mode paths. You supply the task and the decisions
-you own; the host handles assignment lookup, fresh reports, and check records.
+explains discovery and local-mode paths. Before starting, your host checks that
+it can invoke the configured native workers and reviewers. You supply the task
+and the decisions you own; the host handles assignment lookup, fresh reports,
+and check records.
 Ordinary single-agent work can proceed without a run.
 
 A useful answer identifies the changed result, the reported check, the review,
@@ -137,10 +144,6 @@ Artifact checks cover recorded documents, not every product file or its test
 environment. A passing check can miss a bug. Keep raw ledgers, assignments,
 and result documents private: they can contain goals, commands, and paths;
 hashes are not anonymization. Read [SECURITY.md](SECURITY.md) before real work.
-
-If your existing native setup already handles these handoffs reliably, the
-extra record may not justify another installation. Our [validation findings](docs/participation-validation.md)
-separate exercised protections from unproven time savings and code-quality claims.
 
 ## Updates and removal
 

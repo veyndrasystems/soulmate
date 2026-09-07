@@ -60,6 +60,26 @@ bounded parent context while the other received a fresh assignment. The pilot
 does not establish causal superiority, statistical error rates, or lower total
 operator effort for either setup.
 
+## One native continuation remained incomplete
+
+A separate, bounded one-arm fictional observation at reviewed source snapshot
+`6911dbb` recorded an actual native worker change and a host-recorded frozen
+check with exit 0. A fresh native coordinator retrieved the pending reviewer
+assignment, but no native reviewer dispatch or delivery occurred and no
+reviewer or lead acceptance event was appended. The coordinator reported that
+its native spawn tool was unavailable; that is agent-declared capability
+evidence, not independent inspection of the host tool set. A plan-only brief
+cannot establish that absence.
+
+The observation contained 10 observed Soulmate calls, 1 actual product check, 2
+native trial dispatches, and 0 reviewer dispatches. A separate root read-only
+verification added 2 calls, including 1 rejected absolute-ledger-path attempt;
+the corrected read only confirmed that review and acceptance remained absent.
+This was one fictional arm, not a matched trial or a successful continuation.
+Previous equal and negative Holytail comparisons remain unchanged. No human
+installation, incremental gain, savings, or omitted-review incident was
+measured.
+
 ## What belongs in the product promise
 
 Supported by these observations: existing native agents can do the work while
@@ -77,3 +97,9 @@ costs. Another green fixture alone cannot settle that question.
 The current first-use guidance asks one work question and leaves the protocol
 to the host. Its aim is fewer concepts before first value; this is a design
 choice informed by the pilots, not a measured usability improvement.
+
+For an optional user-owned evaluation, choose a real task where an inspectable
+acceptance record might matter. Keep a private yes/no/unclear note about record
+consultation, setup, repair, and review burden, and whether you would reuse the
+record. This voluntary observation can inform a later decision; one preference
+does not establish causal installation payback.

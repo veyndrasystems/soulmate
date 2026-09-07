@@ -62,6 +62,15 @@ configuration, profiles, and declarations; **it does not run project tests**.
 A declaration is not a host permission grant or proof that all edits stayed
 inside it. Leave memory rights empty for this first task.
 
+Before `run start`, the coordinating context must verify that the actual host
+session exposes the native worker and reviewer spawn tools required by the
+selected workflow. A profile, task name, or plan-only brief is not native capability
+evidence. If either tool is unavailable, return the limitation and pending work
+to the existing lead or operator without starting a substitute executor. Do
+not repeat a diagnostic brief, use shell `codex exec` or `soulmate away`, rename
+the task, impersonate a role, or add a new permission. This is host guidance;
+Soulmate does not detect or mechanically enforce this preflight.
+
 Native names must be usable in the current host session. If the host keeps used
 task names, resolve that before freezing a new run; see
 [resuming with an existing host](repair-a-run.md). This setup should reuse the
@@ -163,8 +172,9 @@ scripted and its temporary project is removed. The focused
 Next initialize a second disposable project and confirm the host sees the
 generated skill; discovery controls differ by host release. A pending
 assignment still needs the native host to execute it. If the required native
-subagent mechanism is unavailable, the skill returns the assignment to the
-operator; it does not silently switch executors.
+worker or reviewer spawn tool is unavailable, the skill returns the assignment
+to the operator; it does not silently switch executors or use a plan-only brief
+as evidence that the tool exists.
 
 Follow [your first real checked run](first-checked-run.md#use-your-own-project)
 for explicit scope, result snapshots, submission-ID capture before the host
