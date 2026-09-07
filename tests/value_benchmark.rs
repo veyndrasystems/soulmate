@@ -77,6 +77,16 @@ fn benchmark_human_output_explains_the_bounded_result() {
     assert!(rendered.contains("Host-reported check: failed (exit 1); synthetic caller report."));
     assert!(rendered.contains("Attempt 2:\n  Worker claim: completed."));
     assert!(rendered.contains("Host-reported check: passed (exit 0); synthetic caller report."));
+    let pending = rendered
+        .find("After the repair check, before final acceptance:\n  Current fresh reviewer assignment: pending.\n  Lead decision: pending.")
+        .expect("intermediate pending review state");
+    let approved = rendered
+        .find("After review and lead acceptance:\n  Reviewer outcome: approved.\n  Lead decision: accepted.")
+        .expect("final review and lead state");
+    assert!(
+        pending < approved,
+        "pending state must precede final acceptance"
+    );
     assert!(rendered
         .contains("Lead decision: pending; protocol refusal recorded (not a lead rejection)."));
     assert!(rendered.contains("Lead decision: accepted."));

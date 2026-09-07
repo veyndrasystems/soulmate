@@ -115,7 +115,7 @@ fn check_reports_hashes_and_keeps_json_stdout_stable() {
 
 #[test]
 fn managed_drift_warns_on_stderr_without_editing_or_relabeling_version() {
-    let (base, _product, control, bindings) = local_project("drift");
+    let (base, _product, control, bindings) = local_project("drift-older-newer");
     let config = control.join("soulmate.json");
     let skill = control.join(".agents/skills/soulmate/SKILL.md");
     let edited = b"<!-- soulmate-managed-skill:v1 -->\noperator edit\n";
@@ -133,8 +133,18 @@ fn managed_drift_warns_on_stderr_without_editing_or_relabeling_version() {
     assert!(stderr.contains(&format!("embedded SHA256 {}", hash(SOULMATE_SKILL))));
     assert!(stderr.contains(&format!("observed SHA256 {}", hash(edited))));
     assert!(stderr.contains("init --refresh-skills --root"));
-    assert!(!stderr.contains("older") && !stderr.contains("newer"));
-    assert!(!stderr.contains("incompatible"));
+    let shell_quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
+    let expected_warning = format!(
+        "warning: Soulmate managed skill .agents/skills/soulmate/SKILL.md differs from this binary's embedded skill (Soulmate package {}; invoking binary {}; embedded SHA256 {}; observed SHA256 {}). Inspect the invoking binary version/path; Explicitly run matching binary {} init --refresh-skills --root {}. Install the intended release if needed.\n",
+        env!("CARGO_PKG_VERSION"),
+        shell_quote(env!("CARGO_BIN_EXE_soulmate")),
+        hash(SOULMATE_SKILL),
+        hash(edited),
+        shell_quote(env!("CARGO_BIN_EXE_soulmate")),
+        shell_quote(control.to_str().unwrap()),
+    );
+    assert_eq!(stderr, expected_warning);
+    assert!(stderr.contains("older-newer"));
     assert_eq!(fs::read(&skill).unwrap(), edited);
 
     let human = invoke(&["check", "--config", config.to_str().unwrap()], &bindings);

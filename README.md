@@ -48,6 +48,11 @@ Rework: preserved the previous attempt for the next assignment.
 Attempt 2:
   Worker claim: completed.
   Host-reported check: passed (exit 0); synthetic caller report.
+After the repair check, before final acceptance:
+  Current fresh reviewer assignment: pending.
+  Lead decision: pending.
+  A passing check alone did not accept the run.
+After review and lead acceptance:
   Reviewer outcome: approved.
   Lead decision: accepted.
 ```
@@ -57,6 +62,10 @@ To keep inspectable records, rerun with `soulmate benchmark --output NEW_DIRECTO
 This is a scripted configuration-repair task with real command exit codes;
 actors are simulated. It demonstrates the protection, not time saved or agent
 quality. [Inspect the experiment and its limits](docs/value-proof-methodology.md).
+
+That intermediate state is also the handoff point for an existing host: it can
+retrieve the configured review assignment with the current check and earlier
+attempt evidence, then carry out the agreed remaining work.
 
 In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.
 

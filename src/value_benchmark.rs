@@ -71,8 +71,34 @@ pub fn render(value: &Value) -> Result<String, String> {
     let elapsed = value["automatedElapsedMs"]
         .as_u64()
         .ok_or("benchmark result has no automated elapsed time")?;
+    let recovery = value["observedResult"]["protectedRecovery"]
+        .as_object()
+        .ok_or("benchmark result has no protected recovery observations")?;
+    let repair_check_exit_code = recovery
+        .get("repairCheckExitCode")
+        .and_then(Value::as_i64)
+        .ok_or("benchmark result has no repair check exit code")?;
+    let passing_check_alone_accepted = recovery
+        .get("passingCheckAloneAccepted")
+        .and_then(Value::as_bool)
+        .ok_or("benchmark result has no passing-check acceptance observation")?;
+    let reviewer_approval_alone_accepted = recovery
+        .get("reviewerApprovalAloneAccepted")
+        .and_then(Value::as_bool)
+        .ok_or("benchmark result has no reviewer acceptance observation")?;
+    let final_status = recovery
+        .get("finalStatus")
+        .and_then(Value::as_str)
+        .ok_or("benchmark result has no final recovery status")?;
+    if repair_check_exit_code != 0
+        || passing_check_alone_accepted
+        || reviewer_approval_alone_accepted
+        || final_status != "accepted"
+    {
+        return Err("benchmark result does not show the exercised recovery sequence".into());
+    }
     Ok(format!(
-        "False-completion proof passed ({passed}/{} assertions).\n\nTask: repair an incomplete project configuration. Scripted actors; real local checks.\nAttempt 1:\n  Worker claim: completed.\n  Host-reported check: failed (exit 1); synthetic caller report.\n  Reviewer outcome: approved.\n  Lead decision: pending; protocol refusal recorded (not a lead rejection).\nRework: preserved the previous attempt for the next assignment.\nAttempt 2:\n  Worker claim: completed.\n  Host-reported check: passed (exit 0); synthetic caller report.\n  Reviewer outcome: approved.\n  Lead decision: accepted.\nBenchmark driver ran the fixture check; run record-check only records the result.\n\nThe fixture ran without a model or setup in your project. To inspect the records, rerun with --output followed by a new directory path.\n\nSource: synthetic. CLI invocations: {invocations}. Automated elapsed time: {elapsed} ms. Human interaction time: unmeasured.\n",
+        "False-completion proof passed ({passed}/{} assertions).\n\nTask: repair an incomplete project configuration. Scripted actors; real local checks.\nAttempt 1:\n  Worker claim: completed.\n  Host-reported check: failed (exit 1); synthetic caller report.\n  Reviewer outcome: approved.\n  Lead decision: pending; protocol refusal recorded (not a lead rejection).\nRework: preserved the previous attempt for the next assignment.\nAttempt 2:\n  Worker claim: completed.\n  Host-reported check: passed (exit {repair_check_exit_code}); synthetic caller report.\nAfter the repair check, before final acceptance:\n  Current fresh reviewer assignment: pending.\n  Lead decision: pending.\n  A passing check alone did not accept the run.\nAfter review and lead acceptance:\n  Reviewer outcome: approved.\n  Lead decision: accepted.\nBenchmark driver ran the fixture check; run record-check only records the result.\n\nThe fixture ran without a model or setup in your project. To inspect the records, rerun with --output followed by a new directory path.\n\nSource: synthetic. CLI invocations: {invocations}. Automated elapsed time: {elapsed} ms. Human interaction time: unmeasured.\n",
         assertions.len()
     ))
 }
