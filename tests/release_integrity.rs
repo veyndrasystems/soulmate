@@ -693,7 +693,7 @@ fn required_host_fixture_targets_are_non_native() {
 fn published_install_smoke_refuses_a_non_native_target_before_network_access() {
     let fixture = Fixture::new("published-install-host-refusal");
     let expected = fixture.0.join("expected");
-    fs::copy("/bin/true", &expected).unwrap();
+    fs::write(&expected, "#!/bin/sh\nexit 0\n").unwrap();
     make_executable(&expected);
 
     let host_os =

@@ -305,7 +305,7 @@ fn check_classifies_unmanaged_invalid_bytes_and_unsafe_paths_without_following_t
     let config = control.join("soulmate.json");
     let unmanaged = control.join(".agents/skills/soulmate/SKILL.md");
     let invalid_utf8 = control.join(".claude/skills/soulmate/SKILL.md");
-    fs::write(&unmanaged, b"host-managed skill\n").unwrap();
+    fs::write(unmanaged, b"host-managed skill\n").unwrap();
     fs::write(&invalid_utf8, [0xff, 0xfe, 0x00]).unwrap();
 
     let third_party = invoke(

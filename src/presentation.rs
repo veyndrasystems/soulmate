@@ -19,11 +19,13 @@ fn has_control(value: &str) -> bool {
 }
 
 fn printf_encoded(value: &str) -> String {
-    value
-        .as_bytes()
-        .iter()
-        .map(|byte| format!("\\0{byte:03o}"))
-        .collect()
+    use std::fmt::Write;
+
+    let mut encoded = String::new();
+    for byte in value.as_bytes() {
+        write!(&mut encoded, "\\0{byte:03o}").expect("writing to String cannot fail");
+    }
+    encoded
 }
 
 fn exact_assignment(name: &str, value: &str) -> String {
@@ -121,7 +123,13 @@ mod tests {
 
     #[cfg(unix)]
     fn hex(value: &[u8]) -> String {
-        value.iter().map(|byte| format!("{byte:02x}")).collect()
+        use std::fmt::Write;
+
+        let mut output = String::new();
+        for byte in value {
+            write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");
+        }
+        output
     }
 
     #[test]

@@ -304,7 +304,7 @@ fn clean_response_driven_checked_run_uses_nine_soulmate_calls() {
     assert_eq!(status["checks"]["observedCount"], 1);
     assert_eq!(
         status["claim"]["artifactSha256"],
-        sha256(&fs::read(fixture.root.join(&worker_artifact)).unwrap())
+        sha256(&fs::read(fixture.root.join(worker_artifact)).unwrap())
     );
     assert_eq!(status["review"]["status"], "approved");
     assert_eq!(status["acceptance"]["status"], "accepted");
