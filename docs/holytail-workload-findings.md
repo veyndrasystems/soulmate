@@ -78,3 +78,13 @@ The Holytail code improvement is useful on its own; it does not establish that
 Soulmate caused the improvement. A strong existing native workflow remains a
 valid choice. A future payback claim needs ordinary-use evidence that a
 recurring loss disappeared, including setup, repair, and review costs.
+
+## Token-economics retrospective — September 7, 2026
+
+The tested hypothesis was that Soulmate might reduce total model-token usage enough to contribute to installation payback. The native baseline was competent: it already used agents, Holytail, durable handoffs, real checks, and independent review. The original comparison fixed a four-observation screening budget with one planned fresh-context resumption change, and gave both conditions the same acceptance criteria, worker model, role boundaries, and project checks. Independent review used the frozen oracle and scoped mutation checks. Later recommendations to capture active-versus-waiting time and complete workflow costs were follow-up measurement needs, not controls applied retroactively.
+
+The operator chose the question and budget and made the stop and publication decisions. Agents performed setup, source changes, checks, reviews, record recovery, and arithmetic. Historical token usage was recovered retrospectively from existing private host records; raw logs remain private, and no experiment was rerun.
+
+The directly attributable combined slice was 4,043,947 tokens for A and 4,149,963 for B: B was 106,016 tokens higher (+2.6216%). The narrow P2 resume worker and reviewer slice was 1,064,197 for A and 1,057,027 for B: B was 7,170 lower (-0.6737%). Shared setup used 2,463,969 tokens, and the 11,436,168-token mixed coordinator window covered multiple arms; neither shared amount can be fairly allocated into those direct totals.
+
+Token savings were not established; total-workflow economics remain inconclusive. This unsuccessful validation does not prove Soulmate is useless.
