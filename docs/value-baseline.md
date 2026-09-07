@@ -69,27 +69,10 @@ worker's existing command list, which is a permission declaration rather than
 an executed check policy. The scenario intentionally continued after the known
 failure to expose the acceptance-record gap.
 
-## What to measure next
-
-Keep future observations in distinct categories:
-
-- Deterministic fixture: command exits, canonical transitions, preserved hashes,
-  command counts and automated elapsed time.
-- Local host report: which result was supplied, for which exact target, and what
-  Soulmate recorded or refused.
-- User observation: time spent, whether the explanation was useful, and whether
-  an avoided consequence or false positive was explicitly confirmed.
-
 The fixture's automated elapsed time is not active user time. A reproducible
 command count is not a novice-completion rate. Until real participants provide
 those measurements, onboarding speed and broad recurring-loss claims remain
 unestablished.
-
-The proposed next investigations are ordinary host workflows, real use on
-multiple active projects, and first use by people who have not read the
-architecture. Automatic hooks, concurrency guards and memory automation should
-follow the incident evidence they are meant to address. They are not prerequisites
-for reproducing this first scoped acceptance check.
 
 See [the proof methodology](value-proof-methodology.md) for source labels,
 privacy, compatibility and interpretation limits.

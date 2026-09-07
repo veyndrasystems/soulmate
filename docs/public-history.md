@@ -35,21 +35,6 @@ README install command with Cargo.toml and install.sh in that same snapshot.
 The release-reference gate checks these source identities before publication;
 it cannot invalidate an external search cache.
 
-## Publication controls
-
-Keep publication permission and history retention in separate GitHub rulesets.
-The retention rules must remain active, with no bypass actors, while a
-publication window permits an exact ref update:
-
-- `main`: block non-fast-forward updates and deletion.
-- All tags: block updates and deletion; publication may create a new tag only.
-
-Before a write, verify the canonical repository ID, intended ref, authenticated
-operator, applicable rules and exact candidate checks. After a write, verify
-remote refs and restore the publication lock. Do not use a lock exception to
-remove the retention rules. Existing release tags and assets are immutable;
-corrections use the existing version policy and a new release when needed.
-
 CI's ancestry check is local evidence. Provider rules must be verified
 separately before reporting them enforced. An administrator able to change
 rules or delete a repository remains outside these checks; neither a passing

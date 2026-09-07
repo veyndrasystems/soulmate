@@ -90,16 +90,8 @@ than asking the user to manage IDs and report paths.
 Still unestablished: better code, fewer recurring human interventions, lower
 total cost, preserved root conversations, or an installation that pays for
 itself for both novice and experienced builders. A strong native setup remains
-a valid alternative. The next useful evidence is repeated ordinary use showing
-which reconstruction work disappears and what setup and recovery effort it
-costs. Another green fixture alone cannot settle that question.
+a valid alternative. Another green fixture alone cannot settle that question.
 
 The current first-use guidance asks one work question and leaves the protocol
 to the host. Its aim is fewer concepts before first value; this is a design
 choice informed by the pilots, not a measured usability improvement.
-
-For an optional user-owned evaluation, choose a real task where an inspectable
-acceptance record might matter. Keep a private yes/no/unclear note about record
-consultation, setup, repair, and review burden, and whether you would reuse the
-record. This voluntary observation can inform a later decision; one preference
-does not establish causal installation payback.

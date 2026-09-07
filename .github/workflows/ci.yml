@@ -2,6 +2,7 @@ name: Rust primary CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -31,7 +32,10 @@ jobs:
           if [ "$VALUE_PROOF_BASE" = "0000000000000000000000000000000000000000" ]; then
             VALUE_PROOF_BASE=$(git rev-parse --verify HEAD^)
             export VALUE_PROOF_BASE
+          elif ! git cat-file -e "${VALUE_PROOF_BASE}^{commit}"; then
+            git fetch --no-tags origin "$VALUE_PROOF_BASE"
           fi
+          git cat-file -e "${VALUE_PROOF_BASE}^{commit}"
           cargo test --locked
       - name: Reproduce the checked-acceptance claim
         run: SOULMATE_BIN=target/debug/soulmate ./scripts/run-value-proof-suite.sh
@@ -51,6 +55,7 @@ jobs:
       - name: Exercise packaged Linux installer
         run: ./scripts/installer-smoke.sh dist x86_64-unknown-linux-gnu
       - name: Upload Linux release candidate for WSL
+        if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: soulmate-linux-x86_64-${{ github.sha }}
@@ -95,7 +100,10 @@ jobs:
           if [ "$VALUE_PROOF_BASE" = "0000000000000000000000000000000000000000" ]; then
             VALUE_PROOF_BASE=$(git rev-parse --verify HEAD^)
             export VALUE_PROOF_BASE
+          elif ! git cat-file -e "${VALUE_PROOF_BASE}^{commit}"; then
+            git fetch --no-tags origin "$VALUE_PROOF_BASE"
           fi
+          git cat-file -e "${VALUE_PROOF_BASE}^{commit}"
           cargo test --locked
       - name: Reproduce the checked-acceptance claim
         run: SOULMATE_BIN=target/debug/soulmate ./scripts/run-value-proof-suite.sh
@@ -109,6 +117,7 @@ jobs:
         run: ./scripts/installer-smoke.sh dist "${{ matrix.target }}"
   windows-wsl:
     needs: rust
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
