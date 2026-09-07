@@ -80,7 +80,9 @@ review what you share, since an ignore rule is not access control. Before any
 real agent work, review `soulmate.json` and the generated profiles. The starter
 has empty observe/write/command declarations: set the exact authorized limits
 and the host's own permissions before freezing the run. A goal does not grant
-permission. See [declared boundaries](../REFERENCE.md#first-run-details).
+permission. Follow [review the starter setup once](onboarding.md#review-the-starter-setup-once)
+for the fields and host mapping needed here; no protocol reference is required
+to prepare this first task.
 
 ```sh
 soulmate init --mode portable

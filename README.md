@@ -18,12 +18,13 @@ earlier attempt remains available.
 
 ## Install and see the result
 
-This **preview release** runs on Linux x86_64, including Ubuntu on WSL 2.
+This **preview** targets Linux x86_64 and macOS on Apple Silicon and Intel.
+Ubuntu on WSL 2 uses the Linux binary. See the [platform support details](docs/platform-support.md).
 The first experiment needs no account, API key, model, project configuration,
 or language runtime. Your real work continues in your existing agent host.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.12.1-rc.2/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.12.1-rc.3/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
@@ -38,9 +39,17 @@ Success starts with `False-completion proof passed (14/14 assertions).`
 The experiment actually invokes Soulmate in a disposable project and reports:
 
 ```text
-Attempt 1: worker claimed completion; check failed (exit 1); reviewer approved; lead acceptance refused.
+Attempt 1:
+  Worker claim: completed.
+  Host-reported check: failed (exit 1); synthetic caller report.
+  Reviewer outcome: approved.
+  Lead decision: pending; protocol refusal recorded (not a lead rejection).
 Rework: preserved the previous attempt for the next assignment.
-Attempt 2: check passed (exit 0); a fresh reviewed attempt was accepted by the lead.
+Attempt 2:
+  Worker claim: completed.
+  Host-reported check: passed (exit 0); synthetic caller report.
+  Reviewer outcome: approved.
+  Lead decision: accepted.
 ```
 
 It leaves your current project untouched and removes its temporary project.
@@ -51,9 +60,11 @@ quality. [Inspect the experiment and its limits](docs/value-proof-methodology.md
 
 In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.
 
-**The useful result:** a failed check stays unresolved even when the worker
-says “completed” and the reviewer says “approved.” Rework keeps earlier results
-connected to the task. A passing check still needs review and a lead decision.
+**Agree on the check before work starts.** Soulmate freezes that command and
+ties each reported result to the submitted work. A reported failure stays
+unresolved even when the worker says “completed” and the reviewer says
+“approved.” Rework preserves earlier results; a passing report still needs
+review and a lead decision.
 
 ## Use it for your next change
 
@@ -69,10 +80,8 @@ soulmate init --mode portable --root .
 Initialization prints a handoff with the actual configuration and skill paths.
 Give it to your existing coding agent, replacing the task and test command:
 
-> Read the generated Soulmate skill. Use Soulmate for **this change**, with
-> **my real project test command**. Review the task scope and my native
-> worker/reviewer mapping first. Handle the handoffs and records, then tell me
-> what changed and what still needs doing before the lead can accept it.
+> Use Soulmate for **this change**. Check it with **my existing test command**.
+> Handle the records and tell me what still needs doing before I can accept it.
 
 Review the declared scope, native agent mapping, and host permissions once.
 Your host supplies models and execution; setup does not start agents or grant
@@ -99,7 +108,7 @@ the host-managed JSON workflow but does not recognize those two flags.
 Give your host the run's ledger path and ask what remains. `run status` shows
 the current claim, artifact condition, reported check, review, and acceptance;
 `run next` retrieves the validated pending assignment. `run inspect` retains
-the full history. [Inspect or recover a run](REFERENCE.md#run-and-recovery).
+the full history. [Inspect or recover a run](docs/repair-a-run.md).
 
 A failed check needs explicit rework with fresh artifacts and review. Recorded
 artifact bytes must still match disk, or no new run event is written. Restore
@@ -128,7 +137,10 @@ separate exercised protections from unproven time savings and code-quality claim
 
 The installer reinstalls its pinned version. After a compatible binary upgrade,
 refresh owned skill copies with `soulmate init --refresh-skills --root PATH`.
-Checked ledgers use run-event format 3; retain a compatible binary on rollback.
+The new preview's `check` shows the running binary and managed-skill hashes;
+a difference is a prompt to inspect versions, not proof of incompatibility.
+Checked ledgers use run-event format 3; use the
+[format and reader map](CHANGELOG.md#public-tags-and-format-readers) on rollback.
 Removing the binary leaves configuration, skills, receipts, ledgers, and
 artifacts. Remove optional hooks first while the binary is available.
 [Update, inspect remnants, and remove](REFERENCE.md#removal).
@@ -136,8 +148,8 @@ artifacts. Remove optional hooks first while the binary is available.
 ## Go deeper
 
 - [First checked run](docs/first-checked-run.md) · [Host setup](docs/onboarding.md)
-- [Profiles and boundaries](REFERENCE.md#first-run-details) · [Optional memory](REFERENCE.md#memory-governance)
-- [Receipts and integrations](REFERENCE.md#advanced-integrations) · [Optional hooks](REFERENCE.md#optional-codex-and-claude-hooks)
+- [Repair or resume](docs/repair-a-run.md) · [Translate the terminology](docs/glossary.md)
+- [Optional memory, hooks, and receipts](docs/optional-surfaces.md)
 - [Windows and WSL 2](docs/windows-wsl.md) · [Commands and versioning](REFERENCE.md)
 - [Proof methodology](docs/value-proof-methodology.md) · [Claim registry](proof/claims.json)
 - [Security](SECURITY.md) · [License](LICENSE)

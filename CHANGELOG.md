@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.12.1-rc.3
+
+- Preview native macOS archive and installer targets for `aarch64-apple-darwin` and `x86_64-apple-darwin`; release readiness remains `NOT_READY` pending compatibility, independent review, exact CI, and installed-asset checks.
+- Show current worker claims, host-reported checks, reviewer findings, and actual lead decisions in the human status and explanation views. A protocol refusal remains distinct from lead rejection; machine JSON and persisted records retain their existing shape.
+- Add read-only skill diagnostics and documentation navigation and guidance. No schema, authority, or stable-policy change is claimed; no persisted migration is required.
+- This entry records the candidate status without asserting that native or public CI has passed.
+
+## Public tags and format readers
+
+For a checked run using run-event format 3, retain a **0.12.0 or later
+compatible binary**. Inspect with `soulmate run inspect LEDGER --config CONFIG`;
+do not edit a ledger's format number to make a downgrade work.
+
+This frozen map covers the public tags observed at commit `243d781`.
+Reader support below is established from tagged source; current-reader tests
+also replay frozen historical fixtures. It is not a claim that every older
+downloaded binary was re-executed during this review.
+
+| Version | Public tag / source commit | Persisted format change | Inspect with this binary |
+| --- | --- | --- | --- |
+| 0.11.0 | [v0.11.0](https://github.com/veyndrasystems/soulmate/tree/v0.11.0), `7f1d014` | No new persisted format | Receipts 1–2; run events 1–2; memory, configuration and harness manifest 1. Rejects run events 3. |
+| 0.12.0 | [v0.12.0](https://github.com/veyndrasystems/soulmate/tree/v0.12.0), `349b662` | Adds checked run events 3 | Receipts 1–2; run events 1–3; memory, configuration and harness manifest 1. |
+| 0.12.1-rc.1 | [v0.12.1-rc.1](https://github.com/veyndrasystems/soulmate/tree/v0.12.1-rc.1), `23e04df` | None | Same persisted readers as 0.12.0. |
+| 0.12.1-rc.2 | [v0.12.1-rc.2](https://github.com/veyndrasystems/soulmate/tree/v0.12.1-rc.2), `243d781` | None | Same persisted readers as 0.12.0. |
+
+The parentless public root `a0b8be3` contains package 0.10.0 without a
+corresponding public release tag in this observed map. Earlier changelog
+entries describe development history, not publicly reconstructable release
+objects. They attribute receipt 2 / harness manifest 1 to 0.4.0 and run events 2
+to 0.7.0; the original archived trees are not asserted equivalent to public tags.
+Private archives, refs, and operational evidence remain intentionally
+unpublished. See [the public history boundary](docs/public-history.md).
+
 ## 0.12.1-rc.2
 
 - Lead with the existing setup-free experiment: `soulmate benchmark` runs a disposable

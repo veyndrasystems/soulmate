@@ -56,89 +56,95 @@ they do not prove host continuity or model recall.
 
 ## Run sequence
 
+Use one uninterrupted sequential host context; retain complete JSON per
+mutation. Default one-worker checked run:
+
+1. Init if needed; run `soulmate check --json --config CONFIG`.
+2. Freeze exact authorized check; pass it with goal/ledger/config to `run start`.
+   Read/verify returned run/lead profile/evidence; invoke configured native lead
+   in root context.
+3. Submit lead artifact (default JSON); verify/invoke returned worker packet,
+   then submit fresh artifact. Retain worker response
+   `event.eventSha256` and reviewer packet; use worker assignment's
+   `checkPolicy.command`, never a submit response field or scalar `--event-id`.
+4. Execute exact packet command in host; call `run record-check` with real exit
+   and worker event as target. Soulmate records caller result; never executes.
+5. After successful record-check for exact worker target in this context, retain
+   result; verify/invoke retained native reviewer assignment with upstream/check
+   evidence; submit finding. Invoke configured lead in the same
+   root context with returned lead packet and check result; submit decision.
+   Keep lead scope, worker completion, caller check, reviewer finding, and lead
+   acceptance separate; packets/approvals are not actor work.
+6. Read `run status LEDGER --json --config CONFIG` and reconcile status/check
+   target with the sequence.
+
+At most nine Soulmate calls cover this default one-worker path: init, check,
+start, scope, worker, check, review, acceptance, status. Profile/artifact reads
+and host checks remain evidence, not savings claims. Custom/multiworker
+workflows must process every required assignment returned by successful
+responses according to its actual role (never presume reviewer), execute/report
+the exact frozen check for each current worker target, and obtain fresh
+review/lead decisions before acceptance. Repeat for each current worker; never
+invent success.
+
+Packets valid only for run/attempt. On resumption, context loss, intervening
+writer/change, failed/ambiguous response, or missing packet, discard caches and
+read fresh `run next --json`/`run status --json` before mutation. Verify
+run/attempt, role/native task name, profile/evidence, policy, upstream hashes.
+A missing report for a valid worker needs no rework: execute/report its packet
+command, then continue reviewer/lead. Nonzero blocks acceptance; a pending
+worker/reviewer never submits a lead event. Fresh lead rework requires prior
+artifacts/protection, a new worker event/check, and fresh review/lead. Keep
+terminal, drift, failed, and rework distinct.
+
+Before checked start, substitute authorized command; omitting
+`--check-command` is explicitly unchecked. `soulmate check` validates
+config/profiles, never the project check; start retains JSON stdout and prints
+the requirement on stderr. Preview `--event-id`/`--text` need matching binary;
+use default JSON when the next assignment is needed.
+
+Use stable `agent` ID and exact `nativeTaskName`; `displayName` is human-only.
+Pass goal, profile bytes, runtime, boundary, skills, memory references, and
+upstream evidence; never substitute a model or fetch a skill. `maxParallel` is
+batch intent, not process enforcement. During an attended session, every
+implementation worker and reviewer must use the host's native subagent spawn
+with the assignment's exact `nativeTaskName`. If native spawn is unavailable,
+stop and return the pending assignment to the operator; do not fall back to
+shell `codex exec` or `soulmate away`. Temporary attended routing quarantine
+(`openai/codex#31894`): strong external symptom match, not proven root
+cause; a later repository change may retire it only after upstream resolution
+is independently verified on a supported CLI. `soulmate away` remains reserved for an explicit operator-away/disconnect handoff.
+
+Before spawning, read/hash exact `memoryReferences`; pass bytes only to that
+agent, never copy them into receipts/hooks/logs. Write each attempt to fresh
+`artifactPathHint` under `artifactRootHint`, never replacing upstream paths.
+Configured lead alone records `accepted`; reviewer approval is not acceptance.
+
+Default one-worker pseudocode: retain returned assignment before worker submit.
+Host pseudocode (not a CLI):
+
 ```text
-soulmate check --config soulmate.json
-soulmate run start WORKFLOW --goal "..." --check-command "REAL_PROJECT_CHECK" --ledger .soulmate/runs/run.jsonl [--boundary BOUNDARY.json] [--harness-receipt RECEIPT.json] --config soulmate.json
-soulmate run next .soulmate/runs/run.jsonl --json --config soulmate.json
-# invoke the host-native agent, write a fresh artifact, then:
-soulmate run submit AGENT .soulmate/runs/run.jsonl --outcome OUTCOME --artifact ARTIFACT --artifact-root state --config soulmate.json
-soulmate run inspect .soulmate/runs/run.jsonl --json --config soulmate.json
+worker_assignment = validated_response.assignments[0]
+worker_response = soulmate run submit AGENT LEDGER --outcome completed \
+  --artifact ARTIFACT --artifact-root state --config CONFIG
+worker_event = worker_response.event.eventSha256
+check_command = worker_assignment.checkPolicy.command
+check_exit = host_execute_exactly(check_command)
+soulmate run record-check LEDGER --target worker_event \
+  --check-command check_command --exit-code check_exit --config CONFIG
 ```
 
-Before starting a checked run, substitute the user's actual authorized project
-check command; do not freeze the example placeholder. Omitting `--check-command`
-is an explicit unchecked choice. Generic `soulmate check` validates Soulmate's
-configuration and never executes the project check. Start prints the requirement
-on stderr while retaining JSON stdout.
+Use current paths/actor and frozen command. Failed submission stops. Target
+current worker completion, never artifact hash, earlier event, or automatic
+latest lookup. Passing evidence grants no review approval or acceptance.
 
-The preview conveniences `run submit --event-id` and `run next --text` require
-the matching preview binary; a skill refresh alone does not upgrade it. Preserve
-the JSON workflow with an older 0.12.0 binary and extract `event.eventSha256`
-from its successful submission response before executing the frozen check.
-
-Use the assignment's stable `agent` ID for Soulmate commands, `nativeTaskName`
-for host spawn when supported, and `displayName` only for humans. Pass the exact
-goal, profile bytes, runtime, boundary, skills, memory references, and upstream
-artifact evidence. Never substitute a model or fetch a missing skill.
-
-Temporary attended routing quarantine (`openai/codex#31894`): while an active
-session is attended, every implementation worker and reviewer must use the
-host's native subagent spawn with the assignment's exact `nativeTaskName`. If
-native spawn is unavailable, stop and return the pending assignment to the
-operator; do not fall back to shell `codex exec` or `soulmate away`. The issue
-is a strong external symptom match, not a proven root cause; only a later
-repository change may retire this rule after the upstream resolution is
-independently verified on a supported CLI. `soulmate away` remains reserved
-for an explicit operator-away/disconnect handoff.
-
-Before spawning, read only the exact `memoryReferences`, verify hashes when the
-host supports it, and pass bytes only to that named agent. Never copy memory
-into receipts, hooks, logs, or unrelated artifacts. `maxParallel` is batch
-intent, not process enforcement.
-
-Write every attempt to `artifactPathHint` or another fresh path beneath the
-same `artifactRootHint`; never replace an `upstreamArtifacts` path. Submit the
-role-appropriate outcome, including rework, until the configured lead alone
-records `accepted`; reviewer approval is not consensus or final authority.
-
-For a checked run, read the frozen `checkPolicy` in the assignment. With a
-supporting binary, bind the result before executing the frozen command:
-
-```sh
-set -eu
-worker_event=$(soulmate run submit AGENT LEDGER --outcome completed \
-  --artifact ARTIFACT --artifact-root state --event-id --config CONFIG)
-check_exit=0
-sh -c "$check_command" || check_exit=$?
-soulmate run record-check LEDGER --target "$worker_event" \
-  --check-command "$check_command" --exit-code "$check_exit" --config CONFIG
-```
-
-Substitute the exact assignment's paths/actor and set `check_command` to its
-frozen, authorized command before running this fragment. A failed submission
-must stop the sequence. `--event-id` returns a scalar appended event hash;
-default JSON is unchanged and `--event-id` conflicts with `--json`. The target
-is the current worker's completed submission event, not an artifact hash or
-an earlier attempt. Never select an automatic latest target after execution.
-Repeat for each current worker. Do not invent success when execution is
-unavailable. A passing report grants neither review approval nor acceptance.
-
-Use `run status` for the current attempt's claim, check, review, acceptance,
-and read-only next action. `run next LEDGER --text --config CONFIG` retrieves
-the validated assignment, goal, frozen check, fresh result location, and
-prior/current artifact references without copying their contents or memory.
-Default/`--json` output remains the host packet; `--text` and `--json` conflict.
-Read the referenced evidence within its authority and scope. This reconstructs
-recorded work, not the host conversation or proof of model recall.
-
-After a failed check or refused acceptance, inspect `run status`/`run explain`
-and use explicit role-appropriate rework with fresh documents. Preserve prior
-artifacts, capture each new worker event before its check, and obtain a new
-review and lead decision. Terminal states remain distinct; do not resume an
-accepted or rejected run as mutable work. Artifact drift prevents any append,
-including a blocked submission: return the blocker and restore only legitimate
-recorded bytes rather than rewriting history. Unchecked runs retain their
-existing behavior.
+Use `run status` for current claim, check, review, acceptance, and read-only
+next action. `run next LEDGER --text --config CONFIG` returns validated
+assignment/evidence without copying private contents. After failed
+check/refused acceptance, inspect fresh next/status evidence and use explicit
+role-appropriate rework with fresh documents. Never resume accepted/rejected
+runs. Artifact drift blocks every append until legitimate bytes are restored.
+Unchecked runs retain existing behavior.
 
 ## Explicit operator-away handoff
 

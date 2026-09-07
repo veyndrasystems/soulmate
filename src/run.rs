@@ -360,6 +360,33 @@ pub fn explain(loaded: &Loaded, ledger: &str, event_id: Option<&str>) -> Result<
     crate::run_value::explain_with_artifact(&state, event_id, artifact_current)
 }
 
+/// Build the typed read-only projection used by the default human status view.
+pub(crate) fn human_status(
+    loaded: &Loaded,
+    ledger: &str,
+) -> Result<crate::run_value::HumanStatus, String> {
+    let (_, events, _) = load(loaded, ledger)?;
+    let state = run_state::reduce(&events)?;
+    assert_no_drift(loaded, &state)?;
+    let artifact_current = artifact_current(loaded, &state)?;
+    predecessor(loaded, &events[0])?;
+    crate::run_value::human_status(&state, artifact_current)
+}
+
+/// Build the typed read-only projection used by the default human explanation view.
+pub(crate) fn human_explain(
+    loaded: &Loaded,
+    ledger: &str,
+    event_id: Option<&str>,
+) -> Result<crate::run_value::HumanExplanation, String> {
+    let (_, events, _) = load(loaded, ledger)?;
+    let state = run_state::reduce(&events)?;
+    assert_no_drift(loaded, &state)?;
+    let artifact_current = artifact_current(loaded, &state)?;
+    predecessor(loaded, &events[0])?;
+    crate::run_value::human_explain(&state, event_id, artifact_current)
+}
+
 /// Generate a local redacted report from explicitly selected ledgers.  The
 /// report only contains hashes, counts, bounded statuses, and observed command
 /// durations; it never returns goals, commands, prompts, profiles, paths, or

@@ -42,12 +42,38 @@ already use. Review that project configuration once; keep their existing role
 definitions and host permissions. In local mode, give the host the path to
 ControlRoot's `soulmate.json` and skill because they are outside the product.
 
+### Review the starter setup once
+
+The starter intentionally grants no file or command access. Before `run start`,
+have your host propose edits to the existing `soulmate.json` for this task:
+
+| Field under each selected `agents` entry | What to put there |
+| --- | --- |
+| `profile` | Keep the generated profile or name the role profile you actually reviewed. |
+| `observe` | Project-relative files or directories needed to understand and review this change. |
+| `write` | Only the product/result paths that role is authorized to change; reviewers normally have no product writes. |
+| `commands` | The real project check and other authorized commands needed for the task. |
+| `nativeName` | The exact usable host task name, if it differs from the logical `worker` or `reviewer` ID. |
+
+Keep the starter workflow and lead unless you intend to change their meaning.
+Review these edits and the host's own permissions, then run
+`soulmate check --config CONFIG` with the actual configuration path. It checks
+configuration, profiles, and declarations; **it does not run project tests**.
+A declaration is not a host permission grant or proof that all edits stayed
+inside it. Leave memory rights empty for this first task.
+
+Native names must be usable in the current host session. If the host keeps used
+task names, resolve that before freezing a new run; see
+[resuming with an existing host](repair-a-run.md). This setup should reuse the
+roles you already trust. It does not require a new agent host or a model account
+for Soulmate.
+
+### Give the host the change
+
 Then describe the work in your existing conversation, for example:
 
-> Use Soulmate for this bounded change: **describe the change**. Use my
-> configured native worker and reviewer, and check it with **the real project
-> test command**. Handle the handoffs and records. Show me what changed, what
-> the check and reviewer found, and whether the lead accepted the result.
+> Use Soulmate for **this change**. Check it with **my existing test command**.
+> Handle the records and tell me what still needs doing before I can accept it.
 
 The host can retrieve assignments, carry submission IDs, use fresh report
 paths, execute the configured check, and record its actual result. These are
@@ -65,7 +91,7 @@ that an agent ran: inspect the actual native result and the recorded check.
 For an existing failed run, give the host its ledger path and ask it to inspect
 the pending work and recover within the approved scope. A failed check needs
 fresh work and review; a changed artifact or governing input needs its
-[specific recovery procedure](../REFERENCE.md#run-and-recovery). Finish with
+[specific recovery procedure](repair-a-run.md). Finish with
 the result, remaining blocker if any, and the next decision you actually own.
 Ordinary single-agent work can continue without a run.
 
@@ -151,6 +177,16 @@ After a binary update, explicitly refresh only owned project skill copies:
 ```sh
 soulmate init --refresh-skills --root PATH
 ```
+
+In the new preview, `check` reports the invoking binary version and hashes of
+its bundled and installed skill copies. A managed difference produces an
+actionable warning, including on stderr with `check --json`; the JSON result
+still describes configuration validity. Missing optional copies or a
+third-party skill do not make a valid configuration invalid. Diagnosis does
+not refresh files or identify whether arbitrary different bytes are newer,
+older, or incompatible. Use the intended binary for the explicit refresh.
+Already-distributed 0.12.0 binaries cannot show these new diagnostics; inspect
+`soulmate version` and update the binary before using preview-only guidance.
 
 Reload the host or start a new session to discover the refreshed skill. This
 refresh does not install hooks or change the host's authentication/permissions.

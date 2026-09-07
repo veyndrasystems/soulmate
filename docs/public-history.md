@@ -3,6 +3,11 @@
 It verifies what you asked an agent to do and what came back, in the same
 record.
 
+For an older ledger, start with the
+[public tag and format reader map](../CHANGELOG.md#public-tags-and-format-readers).
+It distinguishes tagged source support from historical release notes and
+identifies the reader required for checked runs.
+
 ## The retained history boundary
 
 The current public repository begins at commit

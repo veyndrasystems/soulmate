@@ -543,43 +543,37 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
             args::assert_positionals("run status", a, 2)?;
             let ledger = positional(a, 1, "run status requires LEDGER")?;
             let json_output = a.flags.contains_key("json");
-            let config = if json_output {
-                ""
-            } else {
-                a.options.get("config").map(String::as_str).map_or_else(
-                    || l.path.to_str().ok_or("configuration path is not valid UTF-8"),
-                    Ok,
-                )?
-            };
-            let value = run::status(l, ledger).map_err(|error| {
-                if !json_output && run::inspect(l, ledger).is_ok() {
+            if json_output {
+                let value = run::status(l, ledger)
+                    .map_err(|error| map_run_error(error, true))?;
+                print_json(&value)?;
+                return Ok(());
+            }
+            let config = a.options.get("config").map(String::as_str).map_or_else(
+                || l.path.to_str().ok_or("configuration path is not valid UTF-8"),
+                Ok,
+            )?;
+            let value = run::human_status(l, ledger).map_err(|error| {
+                if run::inspect(l, ledger).is_ok() {
                     eprintln!(
                         "Inspect: {}",
                         crate::presentation::read_command("inspect", config, ledger)
                     );
                 }
-                map_run_error(error, json_output)
+                map_run_error(error, false)
             })?;
-            if a.flags.contains_key("json") {
-                print_json(&value)?;
+            crate::run_presentation::print_status(&value);
+            if value.status != "running" || value.artifact_status != "current" {
+                println!("Inspect: {}", crate::presentation::read_command("inspect", config, ledger));
             } else {
-                print_status(&value);
-                if value["status"] != "running" {
-                    println!("Guidance: this run is terminal; inspect its recorded outcome before choosing an explicit successor where supported.");
-                    println!("Inspect: {}", crate::presentation::read_command("inspect", config, ledger));
-                } else if value["artifact"]["status"] != "current" {
-                    println!("Guidance: artifact drift prevents progression. Inspect the recorded references and restore the exact recorded bytes before retrying.");
-                    println!("Inspect: {}", crate::presentation::read_command("inspect", config, ledger));
-                } else {
-                    match run::next(l, ledger) {
-                        Ok(next) if next["status"] == "running" => println!(
-                            "Next: {}",
-                            crate::presentation::read_command("next", config, ledger)
-                        ),
-                        _ => {
-                            println!("Guidance: no validated pending progression is available; inspect the run before recovery.");
-                            println!("Inspect: {}", crate::presentation::read_command("inspect", config, ledger));
-                        }
+                match run::next(l, ledger) {
+                    Ok(next) if next["status"] == "running" => println!(
+                        "Next: {}",
+                        crate::presentation::read_command("next", config, ledger)
+                    ),
+                    _ => {
+                        println!("Guidance: no validated pending progression is available; inspect the run before recovery.");
+                        println!("Inspect: {}", crate::presentation::read_command("inspect", config, ledger));
                     }
                 }
             }
@@ -587,16 +581,22 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
         }
         "explain" => {
             args::assert_positionals("run explain", a, 2)?;
-            let value = run::explain(
-                l,
-                positional(a, 1, "run explain requires LEDGER")?,
-                a.options.get("event").map(String::as_str),
-            )
-            .map_err(|error| map_run_error(error, a.flags.contains_key("json")))?;
             if a.flags.contains_key("json") {
-                print_json(&value)?;
+                let machine = run::explain(
+                    l,
+                    positional(a, 1, "run explain requires LEDGER")?,
+                    a.options.get("event").map(String::as_str),
+                )
+                .map_err(|error| map_run_error(error, true))?;
+                print_json(&machine)?;
             } else {
-                print_explain(&value);
+                let value = run::human_explain(
+                    l,
+                    positional(a, 1, "run explain requires LEDGER")?,
+                    a.options.get("event").map(String::as_str),
+                )
+                .map_err(|error| map_run_error(error, false))?;
+                crate::run_presentation::print_explain(&value);
             }
             return Ok(());
         }
@@ -718,13 +718,13 @@ fn map_run_error(error: String, json_output: bool) -> String {
 
 fn print_help() {
     println!(
-        "Soulmate {VERSION}\n\nUsage: soulmate <command> [options]\n\nCore: init, brief, run, check\nRun actions: start, next, submit, record-check, status, explain, report, inspect, supersede.\nUse 'run next LEDGER --text' for readable pending assignments and 'run submit AGENT LEDGER --event-id' to capture the submitted event hash. Each output flag conflicts with --json; default JSON is unchanged.\n\nRun 'soulmate help advanced' for lifecycle, recovery, migration, hooks, receipts, and optional execution convenience."
+        "Soulmate {VERSION}\n\nUsage: soulmate <command> [options]\n\nCore: init, brief, run, check\n  init prepares portable project setup and reviewable agent configuration.\n  brief presents one bounded task to an existing agent host.\n  run records the task, submissions, checks, review, and lead decision.\n  check validates configuration, profiles, and declared boundaries; the host runs project tests and reports their result.\n\nRun 'soulmate benchmark' for the model-free checked-work demonstration.\nRun 'soulmate help advanced' for run actions, recovery, migration, hooks, receipts, and optional surfaces."
     );
 }
 
 fn print_advanced_help() {
     println!(
-        "Soulmate {VERSION}\n\nAdvanced: bind, doctor, plan, verify, profile, migrate, memory (resolve/inspect/lifecycle), away, hooks, hook-protocol, hook-run, version\n\nRun value proof: the host executes the configured check, then reports its actual result with 'run record-check'; use 'run status', 'run explain', and 'run report' for bounded evidence views.\n\nRun 'soulmate migrate layout --config CONFIG' to inspect a legacy profile migration, then repeat with --apply. Use 'migrate paths' for canonical harness and state directories.\nRun 'soulmate run supersede OLD_LEDGER --workflow WORKFLOW --goal GOAL --ledger NEW_LEDGER' to create an explicit successor after configuration, profile, memory, boundary, or harness-receipt drift."
+        "Soulmate {VERSION}\n\nDo the next change\n  soulmate init --mode portable --root ROOT\n  soulmate brief worker --task TASK --config CONFIG\n  soulmate run start WORKFLOW --goal GOAL --ledger LEDGER [--check-command COMMAND]\n  soulmate run next LEDGER [--text]\n  soulmate run submit AGENT LEDGER --outcome OUTCOME --artifact ARTIFACT [--event-id]\n  soulmate run record-check LEDGER --target EVENT_SHA --check-command COMMAND --exit-code CODE [--duration-ms MS]\n\nWhen work fails or changes\n  soulmate run status LEDGER\n  soulmate run explain LEDGER [--event PROTECTION_EVENT_SHA]\n  soulmate run report LEDGER [LEDGER ...]\n  soulmate run inspect LEDGER\n  soulmate run supersede OLD_LEDGER --workflow WORKFLOW --goal GOAL --ledger NEW_LEDGER\n  --text prints a readable pending assignment; --event-id prints the submitted event hash.\n  Each output flag conflicts with --json; default JSON is unchanged.\n\nOptional surfaces\n  Advanced commands: bind, doctor, plan, verify, profile, migrate, memory (resolve/inspect/lifecycle), away, hooks, hook-protocol, hook-run, version.\n  Run value proof: the host executes the configured check, then reports its actual result with 'run record-check'; use 'run status', 'run explain', and 'run report' for bounded evidence views.\n  Run 'soulmate migrate layout --config CONFIG' to inspect a legacy profile migration, then repeat with --apply. Use 'migrate paths' for canonical harness and state directories.\n  Use 'soulmate run supersede OLD_LEDGER --workflow WORKFLOW --goal GOAL --ledger NEW_LEDGER' after configuration, profile, memory, boundary, or harness-receipt drift."
     );
 }
 
@@ -734,113 +734,4 @@ fn print_json(value: &serde_json::Value) -> Result<(), String> {
         serde_json::to_string_pretty(value).map_err(|error| error.to_string())?
     );
     Ok(())
-}
-
-fn print_status(value: &serde_json::Value) {
-    println!(
-        "Run {}: {} (stage {}, attempt {})",
-        text_field(value, "runId"),
-        text_field(value, "status"),
-        scalar_field(value, "stage"),
-        scalar_field(value, "attempt")
-    );
-    let claim = &value["claim"];
-    println!(
-        "Claim: {} event={} artifact={}",
-        text_field(claim, "status"),
-        text_field(claim, "eventSha256"),
-        text_field(claim, "artifactSha256")
-    );
-    println!("Artifact: {}", text_field(&value["artifact"], "status"));
-    let checks = &value["checks"];
-    println!(
-        "Checks: {} (origin {}, observed {}, failed {}, missing {})",
-        text_field(checks, "status"),
-        text_field(checks, "origin"),
-        scalar_field(checks, "observedCount"),
-        scalar_field(checks, "failedCount"),
-        scalar_field(checks, "missingCount")
-    );
-    if let Some(targets) = checks["targets"].as_array() {
-        for target in targets {
-            println!(
-                "  target {}: {} check={} exit={}",
-                text_field(target, "targetEventSha256"),
-                text_field(target, "status"),
-                text_field(target, "checkEventSha256"),
-                scalar_field(target, "exitCode")
-            );
-        }
-    }
-    print_review_or_acceptance("Review", &value["review"]);
-    print_review_or_acceptance("Acceptance", &value["acceptance"]);
-    if value["status"] != "running" || value["artifact"]["status"] != "current" {
-        return;
-    }
-    match checks["status"].as_str() {
-        Some("not_observed") => println!(
-            "Guidance: run the configured check in its host and report the actual result for every worker target with run record-check."
-        ),
-        Some("blocked") => println!(
-            "Guidance: repair or rework as needed, rerun the configured check in its host, report the actual result, then request review and lead acceptance."
-        ),
-        Some("passed") => println!(
-            "Guidance: checks passed; reviewer approval and lead acceptance remain separate authority steps."
-        ),
-        _ => {}
-    }
-}
-
-fn print_explain(value: &serde_json::Value) {
-    println!("Run {} explanation", text_field(value, "runId"));
-    let status = &value["status"];
-    println!(
-        "Status: {} (artifact {})",
-        text_field(status, "status"),
-        text_field(&status["artifact"], "status")
-    );
-    let protection = &value["protection"];
-    if protection.is_null() {
-        println!("Protection: none selected");
-    } else {
-        println!(
-            "Protection: {} reason={} actor={} event={}",
-            text_field(protection, "attemptedOutcome"),
-            text_field(protection, "reason"),
-            text_field(protection, "actor"),
-            text_field(protection, "eventSha256")
-        );
-        if let Some(evidence) = protection["checkEvidence"].as_array() {
-            for item in evidence {
-                println!(
-                    "  evidence target={} status={} check={} exit={}",
-                    text_field(item, "targetEventSha256"),
-                    text_field(item, "status"),
-                    text_field(item, "checkEventSha256"),
-                    scalar_field(item, "exitCode")
-                );
-            }
-        }
-    }
-    println!("Guidance: {}", text_field(value, "guidance"));
-}
-
-fn print_review_or_acceptance(label: &str, value: &serde_json::Value) {
-    println!(
-        "{label}: {} event={} artifact={}",
-        text_field(value, "status"),
-        text_field(value, "eventSha256"),
-        text_field(value, "artifactSha256")
-    );
-}
-
-fn text_field<'a>(value: &'a serde_json::Value, key: &str) -> &'a str {
-    value[key].as_str().unwrap_or("unknown")
-}
-
-fn scalar_field(value: &serde_json::Value, key: &str) -> String {
-    value
-        .get(key)
-        .filter(|value| !value.is_null())
-        .map_or_else(|| "unknown".to_owned(), ToString::to_string)
 }

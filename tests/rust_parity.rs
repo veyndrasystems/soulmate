@@ -57,14 +57,24 @@ fn entrypoint_help_and_version_forms_are_compatible() {
         );
         let help = String::from_utf8_lossy(&output.stdout);
         assert!(help.contains("Core: init, brief, run, check"));
+        assert!(help.contains("init prepares portable project setup"));
+        assert!(help.contains("the host runs project tests"));
+        assert!(help.contains("soulmate benchmark"));
         assert!(help.contains("soulmate help advanced"));
-        assert!(!help.contains("Advanced: bind, doctor"));
+        assert!(!help.contains("Do the next change"));
+        assert!(!help.contains("--event-id"));
         assert!(output.stderr.is_empty(), "arguments {arguments:?}");
     }
 
     let advanced = invoke(&["help", "advanced"]);
     assert!(advanced.status.success());
-    assert!(String::from_utf8_lossy(&advanced.stdout).contains("Advanced: bind, doctor"));
+    let advanced_help = String::from_utf8_lossy(&advanced.stdout);
+    assert!(advanced_help.contains("Do the next change"));
+    assert!(advanced_help.contains("When work fails or changes"));
+    assert!(advanced_help.contains("Optional surfaces"));
+    assert!(advanced_help.contains("--event-id"));
+    assert!(advanced_help.contains("--text"));
+    assert!(advanced_help.contains("Advanced commands: bind, doctor"));
 
     for arguments in [&["version"][..], &["--version"][..]] {
         let output = invoke(arguments);

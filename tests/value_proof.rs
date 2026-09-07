@@ -285,7 +285,18 @@ fn checked_packets_and_guard_keep_missing_and_passing_distinct() {
     );
     assert!(human_status.status.success(), "{}", text(&human_status));
     let human_status_text = String::from_utf8_lossy(&human_status.stdout);
-    for expected in ["Claim:", "Checks:", "Review:", "Acceptance:", &worker_event] {
+    for expected in [
+        "Claim:",
+        "Worker claim: worker (worker) stage 2 outcome=completed",
+        "Checks:",
+        "Host-reported check: not observed; not executed by Soulmate",
+        "Frozen command: soulmate check --config verification.json",
+        "Review:",
+        "Reviewer outcome: reviewer (reviewer) stage 3 outcome=approved",
+        "Acceptance:",
+        "Lead decision: pending",
+        &worker_event,
+    ] {
         assert!(human_status_text.contains(expected), "missing {expected}");
     }
     assert!(human_status_text.contains("actual result"));
@@ -320,6 +331,14 @@ fn checked_packets_and_guard_keep_missing_and_passing_distinct() {
     assert!(blocked
         .iter()
         .all(|event| !(event["action"] == "submit" && event["outcome"] == "accepted")));
+    let refused_status = invoke(
+        &root,
+        &["run", "status", ledger, "--config", "soulmate.json"],
+    );
+    assert!(refused_status.status.success(), "{}", text(&refused_status));
+    let refused_status_text = String::from_utf8_lossy(&refused_status.stdout);
+    assert!(refused_status_text.contains("Protocol refusal:"));
+    assert!(refused_status_text.contains("protocol refusal is not a lead rejection"));
     let protection_hash = blocked.last().unwrap()["eventSha256"]
         .as_str()
         .unwrap()
@@ -340,6 +359,9 @@ fn checked_packets_and_guard_keep_missing_and_passing_distinct() {
     let explanation_text = String::from_utf8_lossy(&explanation.stdout);
     assert!(explanation_text.contains("Protection:"));
     assert!(explanation_text.contains("reason=check_missing"));
+    assert!(
+        explanation_text.contains("Host-reported check: not observed; not executed by Soulmate")
+    );
     assert!(explanation_text.contains(&worker_event));
 
     let passing = record_check(&root, ledger, &worker_event, "0");
@@ -361,6 +383,14 @@ fn checked_packets_and_guard_keep_missing_and_passing_distinct() {
     assert_eq!(still_running["checks"]["observedCount"], 1);
     let accepted = submit(&root, "lead", ledger, "accepted", &lead_accept);
     assert_eq!(accepted["status"], "accepted");
+    let terminal_human = invoke(
+        &root,
+        &["run", "status", ledger, "--config", "soulmate.json"],
+    );
+    assert!(terminal_human.status.success(), "{}", text(&terminal_human));
+    let terminal_text = String::from_utf8_lossy(&terminal_human.stdout);
+    assert!(terminal_text.contains("Lead decision: accepted"));
+    assert!(terminal_text.contains("Host-reported check: passed; not executed by Soulmate"));
 
     let report = json_output(&invoke(
         &root,
@@ -380,6 +410,110 @@ fn checked_packets_and_guard_keep_missing_and_passing_distinct() {
     assert!(!serialized.contains(CHECK));
     assert!(!serialized.contains("checked test"));
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn human_status_keeps_rework_history_and_prior_protection_visible() {
+    let root = project("value-proof-human-rework");
+    let ledger = ".soulmate/runs/rework.jsonl";
+    checked_start(&root, ledger, "local_report");
+
+    let scoped = state_artifact(&root, "rework-scope.md", "scope\n");
+    submit(&root, "lead", ledger, "scoped", &scoped);
+    let worker = state_artifact(&root, "rework-worker.md", "first completion\n");
+    submit(&root, "worker", ledger, "completed", &worker);
+    let reviewer = state_artifact(&root, "rework-reviewer.md", "approval\n");
+    submit(&root, "reviewer", ledger, "approved", &reviewer);
+
+    let accepted = state_artifact(&root, "rework-accepted.md", "acceptance\n");
+    let refused = invoke(
+        &root,
+        &[
+            "run",
+            "submit",
+            "lead",
+            ledger,
+            "--outcome",
+            "accepted",
+            "--artifact",
+            &accepted,
+            "--artifact-root",
+            "state",
+            "--config",
+            "soulmate.json",
+        ],
+    );
+    assert!(!refused.status.success(), "{}", text(&refused));
+
+    let repair = state_artifact(&root, "rework-repair.md", "repair request\n");
+    submit(&root, "lead", ledger, "rework", &repair);
+    let before = fs::read(root.join(ledger)).unwrap();
+    let status = invoke(
+        &root,
+        &["run", "status", ledger, "--config", "soulmate.json"],
+    );
+    assert!(status.status.success(), "{}", text(&status));
+    let rendered = String::from_utf8_lossy(&status.stdout);
+    for expected in [
+        "Lead decision: pending",
+        "History: prior attempts remain historical",
+        "Prior attempt 1:",
+        "Protocol refusal: attempt=1 state=prior",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected}: {rendered}"
+        );
+    }
+    let explanation = invoke(
+        &root,
+        &["run", "explain", ledger, "--config", "soulmate.json"],
+    );
+    assert!(explanation.status.success(), "{}", text(&explanation));
+    let explanation_text = String::from_utf8_lossy(&explanation.stdout);
+    assert!(explanation_text.contains("Lead decision: pending"));
+    assert!(explanation_text.contains("History: prior attempts remain historical"));
+    assert_eq!(fs::read(root.join(ledger)).unwrap(), before);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn human_status_and_explain_render_terminal_lead_decisions() {
+    for outcome in ["rejected", "blocked"] {
+        let label = format!("value-proof-human-lead-{outcome}");
+        let root = project(&label);
+        let ledger = format!(".soulmate/runs/{outcome}.jsonl");
+        checked_start(&root, &ledger, "local_report");
+
+        let scoped = state_artifact(&root, &format!("{outcome}-scope.md"), "scope\n");
+        submit(&root, "lead", &ledger, "scoped", &scoped);
+        let worker = state_artifact(&root, &format!("{outcome}-worker.md"), "work\n");
+        submit(&root, "worker", &ledger, "completed", &worker);
+        let reviewer = state_artifact(&root, &format!("{outcome}-reviewer.md"), "review\n");
+        submit(&root, "reviewer", &ledger, "approved", &reviewer);
+        let decision = state_artifact(&root, &format!("{outcome}-decision.md"), "decision\n");
+        let terminal = submit(&root, "lead", &ledger, outcome, &decision);
+        assert_eq!(terminal["status"], outcome);
+
+        let before = fs::read(root.join(&ledger)).unwrap();
+        let status = invoke(
+            &root,
+            &["run", "status", &ledger, "--config", "soulmate.json"],
+        );
+        assert!(status.status.success(), "{}", text(&status));
+        let status_text = String::from_utf8_lossy(&status.stdout);
+        assert!(status_text.contains(&format!("Lead decision: {outcome}")));
+
+        let explanation = invoke(
+            &root,
+            &["run", "explain", &ledger, "--config", "soulmate.json"],
+        );
+        assert!(explanation.status.success(), "{}", text(&explanation));
+        let explanation_text = String::from_utf8_lossy(&explanation.stdout);
+        assert!(explanation_text.contains(&format!("Lead decision: {outcome}")));
+        assert_eq!(fs::read(root.join(&ledger)).unwrap(), before);
+        fs::remove_dir_all(root).unwrap();
+    }
 }
 
 #[test]
@@ -535,6 +669,42 @@ fn report_rejects_duration_overflow_instead_of_saturating() {
 }
 
 #[test]
+fn human_status_escapes_frozen_check_command_without_appending() {
+    let root = project("value-proof-human-escaping");
+    let ledger = ".soulmate/runs/escaping.jsonl";
+    let command = "printf \u{1b}[31mcheck";
+    let started = invoke_owned(
+        &root,
+        vec![
+            "run".into(),
+            "start".into(),
+            "change".into(),
+            "--goal".into(),
+            "escaped command".into(),
+            "--ledger".into(),
+            ledger.into(),
+            "--check-command".into(),
+            command.into(),
+            "--config".into(),
+            "soulmate.json".into(),
+        ],
+    );
+    assert!(started.status.success(), "{}", text(&started));
+    let before = fs::read(root.join(ledger)).unwrap();
+    let status = invoke(
+        &root,
+        &["run", "status", ledger, "--config", "soulmate.json"],
+    );
+    assert!(status.status.success(), "{}", text(&status));
+    let rendered = String::from_utf8_lossy(&status.stdout);
+    assert!(rendered.contains("Host-reported check: not observed; not executed by Soulmate"));
+    assert!(rendered.contains("Frozen command: printf"));
+    assert!(!rendered.as_bytes().contains(&0x1b));
+    assert_eq!(fs::read(root.join(ledger)).unwrap(), before);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn checked_guard_covers_all_worker_stages_and_parallel_workers() {
     let root = project("value-proof-all-workers");
     configure_workers(&root, &["worker", "worker_two", "worker_three"]);
@@ -582,6 +752,31 @@ fn checked_guard_covers_all_worker_stages_and_parallel_workers() {
     assert_eq!(before_checks["checks"]["observedCount"], 0);
     assert_eq!(before_checks["checks"]["missingCount"], 3);
     assert_eq!(before_checks["checks"]["status"], "not_observed");
+    let human_before = invoke(
+        &root,
+        &["run", "status", ledger, "--config", "soulmate.json"],
+    );
+    assert!(human_before.status.success(), "{}", text(&human_before));
+    let human_before_text = String::from_utf8_lossy(&human_before.stdout);
+    for worker in ["worker", "worker_two", "worker_three"] {
+        assert!(human_before_text.contains(&format!("Worker claim: {worker}")));
+    }
+    assert!(human_before_text.contains("reported exit=missing"));
+
+    assert!(record_check(&root, ledger, &first_target, "1")
+        .status
+        .success());
+    let mixed = invoke(
+        &root,
+        &["run", "status", ledger, "--config", "soulmate.json"],
+    );
+    assert!(mixed.status.success(), "{}", text(&mixed));
+    let mixed_text = String::from_utf8_lossy(&mixed.stdout);
+    assert!(mixed_text.contains(&format!(
+        "Check target: worker=worker (worker) stage 2 event={first_target} status=failed reported exit=1"
+    )));
+    assert!(mixed_text.contains("worker_two (worker_two) stage 3"));
+    assert!(mixed_text.contains("reported exit=missing"));
 
     assert!(record_check(&root, ledger, &first_target, "0")
         .status
@@ -600,6 +795,17 @@ fn checked_guard_covers_all_worker_stages_and_parallel_workers() {
     assert_eq!(one_check["checks"]["observedCount"], 1);
     assert_eq!(one_check["checks"]["missingCount"], 2);
     assert_eq!(one_check["checks"]["status"], "not_observed");
+    let human_one = invoke(
+        &root,
+        &["run", "status", ledger, "--config", "soulmate.json"],
+    );
+    assert!(human_one.status.success(), "{}", text(&human_one));
+    let human_one_text = String::from_utf8_lossy(&human_one.stdout);
+    assert!(human_one_text.contains(&format!(
+        "Check target: worker=worker (worker) stage 2 event={first_target} status=passed reported exit=0"
+    )));
+    assert!(human_one_text.contains("worker_two (worker_two) stage 3"));
+    assert!(human_one_text.contains("worker_three (worker_three) stage 3"));
     assert!(record_check(&root, ledger, &second_target, "0")
         .status
         .success());
@@ -621,6 +827,16 @@ fn checked_guard_covers_all_worker_stages_and_parallel_workers() {
     assert_eq!(complete["checks"]["observedCount"], 3);
     assert_eq!(complete["checks"]["missingCount"], 0);
     assert_eq!(complete["checks"]["status"], "passed");
+    let human_complete = invoke(
+        &root,
+        &["run", "status", ledger, "--config", "soulmate.json"],
+    );
+    assert!(human_complete.status.success(), "{}", text(&human_complete));
+    let human_complete_text = String::from_utf8_lossy(&human_complete.stdout);
+    assert!(human_complete_text.contains("Host-reported check: passed; not executed by Soulmate"));
+    assert!(human_complete_text.contains("Reviewer outcome:"));
+    assert!(human_complete_text.contains("outcome=approved"));
+    assert!(human_complete_text.contains("Lead decision: pending"));
     fs::remove_dir_all(root).unwrap();
 }
 

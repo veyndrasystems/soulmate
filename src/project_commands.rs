@@ -2,6 +2,7 @@
 
 use crate::{args, args::Arguments, config, onboarding, project_skills};
 use serde_json::json;
+use std::path::Path;
 
 pub(crate) fn init(arguments: &Arguments) -> Result<(), String> {
     args::assert_options(
@@ -26,7 +27,8 @@ pub(crate) fn init(arguments: &Arguments) -> Result<(), String> {
     if arguments.flags.contains_key("refresh-skills") {
         let statuses = onboarding::refresh(root, arguments.flags.contains_key("with-coffee"))?;
         println!(
-            "Refreshed project skills:\n{}",
+            "Refreshed project skills with Soulmate {}:\n{}",
+            project_skills::package_version(),
             statuses
                 .iter()
                 .map(|status| {
@@ -35,7 +37,10 @@ pub(crate) fn init(arguments: &Arguments) -> Result<(), String> {
                         project_skills::SkillRefreshState::Refreshed => "refreshed",
                         project_skills::SkillRefreshState::Unchanged => "unchanged",
                     };
-                    format!("  {state} {}", status.path)
+                    format!(
+                        "  {state} {} ({} embedded SHA256 {})",
+                        status.path, status.skill, status.embedded_sha256
+                    )
                 })
                 .collect::<Vec<_>>()
                 .join("\n")
@@ -130,6 +135,7 @@ pub(crate) fn check(loaded: &config::Loaded, arguments: &Arguments) -> Result<()
         config::file(&loaded.control_root, &agent.profile)?;
     }
     let warnings = crate::boundary_manifest::warnings(&loaded.config);
+    let skill_diagnostics = project_skills::diagnose(&loaded.control_root);
     let mode = match loaded.mode {
         crate::project_layout::Mode::Local => "local",
         crate::project_layout::Mode::Portable => "portable",
@@ -153,8 +159,118 @@ pub(crate) fn check(loaded: &config::Loaded, arguments: &Arguments) -> Result<()
                 warning["agent"], warning["field"], warning["entry"]
             );
         }
+        print_skill_diagnostics(&skill_diagnostics);
     }
+    print_skill_warnings(&skill_diagnostics, &loaded.control_root);
     Ok(())
+}
+
+fn print_skill_diagnostics(observations: &[project_skills::SkillObservation]) {
+    let binary = invoking_binary();
+    println!(
+        "Managed skill diagnostics (Soulmate package {}; invoking binary {}):",
+        project_skills::package_version(),
+        binary.display
+    );
+    for observation in observations {
+        if observation.optional
+            && observation.state == project_skills::SkillObservationState::Absent
+        {
+            continue;
+        }
+        println!(
+            "  {} {}: {} (embedded SHA256 {}; observed SHA256 {})",
+            observation.skill,
+            observation.path,
+            skill_state_label(observation.state),
+            observation.embedded_sha256,
+            observation.observed_sha256.as_deref().unwrap_or("unknown")
+        );
+    }
+}
+
+fn print_skill_warnings(observations: &[project_skills::SkillObservation], control_root: &Path) {
+    let binary = invoking_binary();
+    let refresh = refresh_instruction(&binary, control_root);
+    for observation in observations {
+        let warning = match observation.state {
+            project_skills::SkillObservationState::ManagedDifferent => Some(format!(
+                "warning: {} managed skill {} differs from this binary's embedded skill (Soulmate package {}; invoking binary {}; embedded SHA256 {}; observed SHA256 {}). Inspect the invoking binary version/path; {} Install the intended release if needed.",
+                observation.skill,
+                observation.path,
+                project_skills::package_version(),
+                binary.display,
+                observation.embedded_sha256,
+                observation.observed_sha256.as_deref().unwrap_or("unknown"),
+                refresh
+            )),
+            project_skills::SkillObservationState::Unsafe
+            | project_skills::SkillObservationState::Unreadable
+            | project_skills::SkillObservationState::Unsupported => Some(format!(
+                "warning: {} skill {} could not be safely inspected ({}; Soulmate package {}; invoking binary {}; embedded SHA256 {}; observed SHA256 unknown). Inspect the invoking binary version/path, repair the skill path, then {} Install the intended release if needed.",
+                observation.skill,
+                observation.path,
+                skill_state_label(observation.state),
+                project_skills::package_version(),
+                binary.display,
+                observation.embedded_sha256,
+                refresh
+            )),
+            _ => None,
+        };
+        if let Some(warning) = warning {
+            eprintln!("{warning}");
+        }
+    }
+}
+
+struct PathPresentation {
+    display: String,
+    command: Option<String>,
+}
+
+fn invoking_binary() -> PathPresentation {
+    std::env::current_exe()
+        .map(|path| path_presentation(&path))
+        .unwrap_or_else(|_| PathPresentation {
+            display: "<invoking binary path unavailable>".to_owned(),
+            command: None,
+        })
+}
+
+fn path_presentation(path: &Path) -> PathPresentation {
+    let value = path.to_string_lossy();
+    let display = crate::presentation::shell_quote(value.as_ref());
+    let command = path
+        .to_str()
+        .filter(|value| !value.chars().any(char::is_control))
+        .map(crate::presentation::shell_quote);
+    PathPresentation { display, command }
+}
+
+fn refresh_instruction(binary: &PathPresentation, control_root: &Path) -> String {
+    let root = path_presentation(control_root);
+    match (binary.command.as_deref(), root.command.as_deref()) {
+        (Some(binary), Some(root)) => {
+            format!("Explicitly run matching binary {binary} init --refresh-skills --root {root}.")
+        }
+        _ => format!(
+            "No copyable refresh command is available: inspect invoking binary {} and ControlRoot {}; move control-bearing or non-UTF-8 paths to safe paths, then run that exact binary with init --refresh-skills.",
+            binary.display, root.display
+        ),
+    }
+}
+
+fn skill_state_label(state: project_skills::SkillObservationState) -> &'static str {
+    match state {
+        project_skills::SkillObservationState::Absent => "absent",
+        project_skills::SkillObservationState::EmbeddedMatch => "embedded match",
+        project_skills::SkillObservationState::ManagedDifferent => "managed different",
+        project_skills::SkillObservationState::Unmanaged => "unmanaged",
+        project_skills::SkillObservationState::Unsafe => "unsafe path or nonregular",
+        project_skills::SkillObservationState::Unreadable => "unreadable",
+        project_skills::SkillObservationState::Unsupported => "unsupported inspection",
+    }
 }
 
 fn required<'a>(arguments: &'a Arguments, name: &str, message: &str) -> Result<&'a str, String> {

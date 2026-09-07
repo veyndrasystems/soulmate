@@ -73,11 +73,23 @@ fn benchmark_human_output_explains_the_bounded_result() {
     assert!(output.status.success(), "{}", text(&output));
     let rendered = String::from_utf8(output.stdout).expect("human output should be UTF-8");
     assert!(rendered.contains("False-completion proof passed"));
-    assert!(rendered.contains("worker claimed completion; check failed (exit 1); reviewer approved; lead acceptance refused"));
-    assert!(rendered.contains("check passed (exit 0)"));
-    assert!(rendered.contains("accepted by the lead"));
+    assert!(rendered.contains("Attempt 1:\n  Worker claim: completed."));
+    assert!(rendered.contains("Host-reported check: failed (exit 1); synthetic caller report."));
+    assert!(rendered.contains("Attempt 2:\n  Worker claim: completed."));
+    assert!(rendered.contains("Host-reported check: passed (exit 0); synthetic caller report."));
+    assert!(rendered
+        .contains("Lead decision: pending; protocol refusal recorded (not a lead rejection)."));
+    assert!(rendered.contains("Lead decision: accepted."));
+    for expected in [
+        "Worker claim:",
+        "Host-reported check:",
+        "Benchmark driver ran the fixture check; run record-check only records the result.",
+        "Reviewer outcome:",
+        "Lead decision:",
+    ] {
+        assert!(rendered.contains(expected), "missing {expected}");
+    }
     assert!(rendered.contains("preserved the previous attempt"));
-    assert!(rendered.contains("fresh reviewed attempt"));
     assert!(rendered.contains("Source: synthetic"));
     assert!(rendered.contains("Human interaction time: unmeasured"));
     assert!(!rendered.contains("soulmate check --config"));

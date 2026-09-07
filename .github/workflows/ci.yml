@@ -46,6 +46,10 @@ jobs:
       - run: SOULMATE_BUILD_COMMIT="$GITHUB_SHA" cargo build --release --locked
       - name: Single-binary smoke without language toolchains
         run: ./scripts/onboarding-smoke.sh "$GITHUB_WORKSPACE/target/release/soulmate"
+      - name: Package Linux release candidate
+        run: ./scripts/package-release.sh x86_64-unknown-linux-gnu target/release/soulmate dist
+      - name: Exercise packaged Linux installer
+        run: ./scripts/installer-smoke.sh dist x86_64-unknown-linux-gnu
       - name: Upload Linux release candidate for WSL
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -54,7 +58,17 @@ jobs:
           if-no-files-found: error
           retention-days: 1
   macos:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            host_arch: arm64
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            host_arch: x86_64
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -64,7 +78,15 @@ jobs:
           CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: ./scripts/check-public-history.sh "$CANDIDATE_SHA"
       - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.75.0 --profile minimal && rustup default 1.75.0
+        run: rustup toolchain install 1.75.0 --profile minimal --component rustfmt --component clippy && rustup default 1.75.0
+      - name: Verify native macOS host and target
+        run: |
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = "${{ matrix.host_arch }}"
+          test "$(rustc -vV | sed -n 's/^host: //p')" = "${{ matrix.target }}"
+          printf 'runner=%s arch=%s os=%s target=%s commit=%s\n' \
+            "${{ matrix.runner }}" "$(uname -m)" "$(sw_vers -productVersion)" \
+            "${{ matrix.target }}" "$GITHUB_SHA"
       - name: Test behavior and immutable proof contracts
         env:
           VALUE_PROOF_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -77,6 +99,14 @@ jobs:
           cargo test --locked
       - name: Reproduce the checked-acceptance claim
         run: SOULMATE_BIN=target/debug/soulmate ./scripts/run-value-proof-suite.sh
+      - name: Build native macOS release candidate
+        env:
+          SOULMATE_BUILD_COMMIT: ${{ github.sha }}
+        run: cargo build --release --locked --target "${{ matrix.target }}"
+      - name: Package native macOS release candidate
+        run: ./scripts/package-release.sh "${{ matrix.target }}" "target/${{ matrix.target }}/release/soulmate" dist
+      - name: Exercise packaged macOS installer
+        run: ./scripts/installer-smoke.sh dist "${{ matrix.target }}"
   windows-wsl:
     needs: rust
     runs-on: windows-2025

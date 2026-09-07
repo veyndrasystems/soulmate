@@ -1,0 +1,266 @@
+//! Human-readable rendering of the typed, validated run projection.
+
+use crate::run_value::{
+    HumanCheckState, HumanCheckTarget, HumanExplanation, HumanIdentity, HumanLeadDecision,
+    HumanLeadState, HumanProtection, HumanRecord, HumanReviewer, HumanStatus, HumanWorker,
+};
+
+pub(crate) fn print_status(status: &HumanStatus) {
+    println!(
+        "Run {}: {} (stage {}, attempt {})",
+        inert(&status.run_id),
+        inert(&status.status),
+        status.stage,
+        status.attempt
+    );
+    println!("Artifact: {}", inert(&status.artifact_status));
+    println!("Claim: current worker claims are listed below.");
+    print_workers(&status.workers);
+    println!("Checks: {}", check_state(status.checks.state));
+    print_checks(
+        &status.checks.state,
+        &status.checks.command,
+        &status.checks.command_sha256,
+        &status.checks.origin,
+        &status.checks.targets,
+    );
+    println!("Review: current reviewer outcomes are listed below.");
+    print_reviewers(&status.reviewers);
+    println!("Acceptance: see the actual lead decision below.");
+    print_lead(&status.lead, &status.status, &status.protections);
+    print_history(&status.history);
+    print_protections(&status.protections);
+    if let Some(guidance) = status.guidance {
+        println!("Guidance: {guidance}");
+    }
+}
+
+pub(crate) fn print_explain(explanation: &HumanExplanation) {
+    println!("Run {} explanation", inert(&explanation.status.run_id));
+    println!(
+        "Status: {} (artifact {})",
+        inert(&explanation.status.status),
+        inert(&explanation.status.artifact_status)
+    );
+    print_workers(&explanation.status.workers);
+    print_checks(
+        &explanation.status.checks.state,
+        &explanation.status.checks.command,
+        &explanation.status.checks.command_sha256,
+        &explanation.status.checks.origin,
+        &explanation.status.checks.targets,
+    );
+    print_reviewers(&explanation.status.reviewers);
+    print_lead(
+        &explanation.status.lead,
+        &explanation.status.status,
+        &explanation.status.protections,
+    );
+    print_history(&explanation.status.history);
+    match &explanation.protection {
+        Some(protection) => print_protection("Protection", protection),
+        None => println!("Protection: none selected"),
+    }
+    println!("Guidance: {}", explanation.guidance);
+}
+
+fn print_workers(workers: &[HumanWorker]) {
+    if workers.is_empty() {
+        println!("Worker claim: none planned");
+        return;
+    }
+    for worker in workers {
+        match &worker.current {
+            Some(record) => println!(
+                "Worker claim: {} outcome={} attempt={} event={} artifact={}",
+                identity(&worker.identity),
+                inert(&record.outcome),
+                record.attempt,
+                inert(&record.event_sha256),
+                inert(&record.artifact_sha256)
+            ),
+            None => println!(
+                "Worker claim: {} outcome=pending attempt={} event=missing artifact=missing",
+                identity(&worker.identity),
+                worker.attempt
+            ),
+        }
+    }
+}
+
+fn print_checks(
+    state: &HumanCheckState,
+    command: &Option<String>,
+    command_sha256: &Option<String>,
+    origin: &Option<String>,
+    targets: &[HumanCheckTarget],
+) {
+    match state {
+        HumanCheckState::Unconfigured => {
+            println!("Host-reported check: not configured (unchecked run)");
+        }
+        _ => {
+            println!(
+                "Host-reported check: {}; not executed by Soulmate; origin={}",
+                check_state(*state),
+                optional(origin.as_deref(), "unknown")
+            );
+            println!(
+                "  Frozen command: {}",
+                optional(command.as_deref(), "missing")
+            );
+            println!(
+                "  Command SHA-256: {}",
+                optional(command_sha256.as_deref(), "missing")
+            );
+            for target in targets {
+                let worker = target
+                    .worker
+                    .as_ref()
+                    .map_or_else(|| "unknown".to_owned(), identity);
+                println!(
+                    "  Check target: worker={} event={} status={} reported exit={} check={}",
+                    worker,
+                    optional(target.target_event_sha256.as_deref(), "missing"),
+                    inert(&target.status),
+                    target
+                        .exit_code
+                        .map_or_else(|| "missing".to_owned(), |exit| exit.to_string()),
+                    optional(target.check_event_sha256.as_deref(), "missing")
+                );
+            }
+        }
+    }
+}
+
+fn print_reviewers(reviewers: &[HumanReviewer]) {
+    if reviewers.is_empty() {
+        println!("Reviewer outcome: none planned");
+        return;
+    }
+    for reviewer in reviewers {
+        match &reviewer.current {
+            Some(record) => println!(
+                "Reviewer outcome: {} outcome={} attempt={} event={} artifact={}",
+                identity(&reviewer.identity),
+                inert(&record.outcome),
+                record.attempt,
+                inert(&record.event_sha256),
+                inert(&record.artifact_sha256)
+            ),
+            None => println!("Reviewer outcome: {} pending", identity(&reviewer.identity)),
+        }
+    }
+}
+
+fn print_lead(lead: &HumanLeadDecision, run_status: &str, protections: &[HumanProtection]) {
+    let state = match lead.state {
+        HumanLeadState::Pending => "pending",
+        HumanLeadState::Accepted => "accepted",
+        HumanLeadState::Rejected => "rejected",
+        HumanLeadState::Blocked => "blocked",
+        HumanLeadState::TerminalWithoutLeadDecision => "not recorded",
+    };
+    let detail = match lead.state {
+        HumanLeadState::TerminalWithoutLeadDecision => {
+            format!(" (run status={})", inert(run_status))
+        }
+        HumanLeadState::Pending if protections.iter().any(|item| item.current) => {
+            " (protocol refusal is not a lead rejection)".to_owned()
+        }
+        _ => String::new(),
+    };
+    println!("Lead decision: {state}{detail}");
+    for record in &lead.current {
+        println!(
+            "  Lead outcome: {} outcome={} attempt={} event={} artifact={}",
+            identity(&record.identity),
+            inert(&record.outcome),
+            record.attempt,
+            inert(&record.event_sha256),
+            inert(&record.artifact_sha256)
+        );
+    }
+}
+
+fn print_history(history: &[HumanRecord]) {
+    if history.is_empty() {
+        return;
+    }
+    println!("History: prior attempts remain historical and are not current acceptance");
+    for record in history {
+        println!(
+            "  Prior attempt {}: {} role={} outcome={} event={} artifact={}",
+            record.attempt,
+            identity(&record.identity),
+            inert(&record.role),
+            inert(&record.outcome),
+            inert(&record.event_sha256),
+            inert(&record.artifact_sha256)
+        );
+    }
+}
+
+fn print_protections(protections: &[HumanProtection]) {
+    for protection in protections {
+        print_protection("Protocol refusal", protection);
+    }
+}
+
+fn print_protection(label: &str, protection: &HumanProtection) {
+    println!(
+        "{label}: attempt={} state={} attempted={} reason={} origin={} actor={} event={}",
+        protection.attempt,
+        if protection.current {
+            "current"
+        } else {
+            "prior"
+        },
+        inert(&protection.attempted_outcome),
+        inert(&protection.reason),
+        inert(&protection.origin),
+        inert(&protection.actor),
+        inert(&protection.event_sha256)
+    );
+    for item in &protection.evidence {
+        let worker = item
+            .worker
+            .as_ref()
+            .map_or_else(|| "unknown".to_owned(), identity);
+        println!(
+            "  Evidence: worker={} target={} status={} reported exit={} check={}",
+            worker,
+            optional(item.target_event_sha256.as_deref(), "missing"),
+            inert(&item.status),
+            item.exit_code
+                .map_or_else(|| "missing".to_owned(), |exit| exit.to_string()),
+            optional(item.check_event_sha256.as_deref(), "missing")
+        );
+    }
+}
+
+fn check_state(state: HumanCheckState) -> &'static str {
+    match state {
+        HumanCheckState::Unconfigured => "not configured",
+        HumanCheckState::NotObserved => "not observed",
+        HumanCheckState::Blocked => "blocked",
+        HumanCheckState::Passed => "passed",
+    }
+}
+
+fn identity(value: &HumanIdentity) -> String {
+    format!(
+        "{} ({}) stage {}",
+        inert(&value.display_name),
+        inert(&value.name),
+        value.stage
+    )
+}
+
+fn optional(value: Option<&str>, missing: &str) -> String {
+    value.map_or_else(|| missing.to_owned(), inert)
+}
+
+fn inert(value: &str) -> String {
+    value.chars().flat_map(char::escape_default).collect()
+}

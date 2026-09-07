@@ -5,6 +5,33 @@ use std::path::{Path, PathBuf};
 const SOULMATE: &str = include_str!("../skills/soulmate/SKILL.md");
 const COFFEE: &str = include_str!("../skills/coffee/SKILL.md");
 const SKILL_MARKER: &str = "<!-- soulmate-managed-skill:v1 -->";
+const PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SkillObservationState {
+    Absent,
+    EmbeddedMatch,
+    ManagedDifferent,
+    Unmanaged,
+    Unsafe,
+    Unreadable,
+    #[allow(dead_code)]
+    Unsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SkillObservation {
+    pub(crate) skill: &'static str,
+    pub(crate) path: &'static str,
+    pub(crate) optional: bool,
+    pub(crate) state: SkillObservationState,
+    pub(crate) embedded_sha256: String,
+    pub(crate) observed_sha256: Option<String>,
+}
+
+pub(crate) fn package_version() -> &'static str {
+    PACKAGE_VERSION
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SkillRefreshState {
@@ -17,12 +44,15 @@ pub(crate) enum SkillRefreshState {
 pub(crate) struct SkillRefreshStatus {
     pub(crate) path: String,
     pub(crate) state: SkillRefreshState,
+    pub(crate) skill: &'static str,
+    pub(crate) embedded_sha256: String,
 }
 
 struct SkillDestination {
     path: PathBuf,
     content: String,
     label: String,
+    skill: &'static str,
     state: SkillRefreshState,
 }
 
@@ -54,8 +84,89 @@ pub(crate) fn refresh(control: &Path, coffee: bool) -> Result<Vec<SkillRefreshSt
         .map(|destination| SkillRefreshStatus {
             path: destination.label,
             state: destination.state,
+            skill: destination.skill,
+            embedded_sha256: crate::hash::text(&destination.content),
         })
         .collect())
+}
+
+pub(crate) fn diagnose(control: &Path) -> Vec<SkillObservation> {
+    [
+        (
+            "Soulmate",
+            ".agents/skills/soulmate/SKILL.md",
+            SOULMATE,
+            false,
+        ),
+        (
+            "Soulmate",
+            ".claude/skills/soulmate/SKILL.md",
+            SOULMATE,
+            false,
+        ),
+        ("Coffee", ".agents/skills/coffee/SKILL.md", COFFEE, true),
+        ("Coffee", ".claude/skills/coffee/SKILL.md", COFFEE, true),
+    ]
+    .into_iter()
+    .map(|(skill, path, content, optional)| {
+        inspect_observation(control, skill, path, content, optional)
+    })
+    .collect()
+}
+
+fn inspect_observation(
+    control: &Path,
+    skill: &'static str,
+    relative: &'static str,
+    content: &str,
+    optional: bool,
+) -> SkillObservation {
+    let (state, observed_sha256) = inspect_observed_bytes(control, relative, content);
+    SkillObservation {
+        skill,
+        path: relative,
+        optional,
+        state,
+        embedded_sha256: crate::hash::text(content),
+        observed_sha256,
+    }
+}
+
+fn inspect_observed_bytes(
+    control: &Path,
+    relative: &str,
+    content: &str,
+) -> (SkillObservationState, Option<String>) {
+    match crate::project_path::secure_bytes_observation(control, relative, "managed project skill")
+    {
+        crate::project_path::SecureBytesResult::Bytes(bytes) => {
+            let observed_sha256 = crate::hash::bytes(&bytes);
+            let state = if bytes == content.as_bytes() {
+                SkillObservationState::EmbeddedMatch
+            } else if has_managed_marker(&bytes) {
+                SkillObservationState::ManagedDifferent
+            } else {
+                SkillObservationState::Unmanaged
+            };
+            (state, Some(observed_sha256))
+        }
+        crate::project_path::SecureBytesResult::Absent(_) => (SkillObservationState::Absent, None),
+        crate::project_path::SecureBytesResult::Unsafe(_) => (SkillObservationState::Unsafe, None),
+        crate::project_path::SecureBytesResult::Unreadable(_) => {
+            (SkillObservationState::Unreadable, None)
+        }
+        #[cfg(not(unix))]
+        crate::project_path::SecureBytesResult::Unsupported(_) => {
+            (SkillObservationState::Unsupported, None)
+        }
+    }
+}
+
+fn has_managed_marker(bytes: &[u8]) -> bool {
+    let marker = SKILL_MARKER.as_bytes();
+    bytes
+        .split(|byte| *byte == b'\n')
+        .any(|line| line == marker || line.strip_suffix(b"\r").is_some_and(|line| line == marker))
 }
 
 fn selected_destinations(control: &Path, coffee: bool) -> Result<Vec<SkillDestination>, String> {
@@ -74,6 +185,7 @@ fn selected_destinations(control: &Path, coffee: bool) -> Result<Vec<SkillDestin
                 path,
                 content: content.to_string(),
                 label: format!("{base}/{name}/{relative}"),
+                skill: name,
                 state,
             });
         }

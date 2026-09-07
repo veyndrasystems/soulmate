@@ -600,3 +600,524 @@ esac
     assert!(!workflow.contains("gh release create"));
     assert!(!workflow.contains("gh release upload"));
 }
+
+#[test]
+fn release_workflow_requires_all_native_targets_and_wsl_before_publish() {
+    let workflow = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(".github/workflows/release.yml"),
+    )
+    .unwrap();
+    for (runner, arch, target) in [
+        ("macos-15", "arm64", "aarch64-apple-darwin"),
+        ("macos-15-intel", "x86_64", "x86_64-apple-darwin"),
+    ] {
+        assert!(workflow.contains(&format!("runner: {runner}")));
+        assert!(workflow.contains(&format!("host_arch: {arch}")));
+        assert!(workflow.contains(&format!("target: {target}")));
+        assert!(workflow.contains(concat!("target/$", "{{ matrix.target }}/release/soulmate")));
+    }
+    assert!(workflow.contains("installer-smoke.sh"));
+    assert!(workflow.contains("github.sha"));
+    assert!(workflow.contains("needs: [linux, macos, windows-wsl]"));
+    assert!(workflow.contains("pattern: release-*"));
+    assert!(workflow.contains("merge-multiple: true"));
+    assert!(workflow.contains("aarch64-apple-darwin.bundle.json"));
+    assert!(workflow.contains("soulmate-aarch64-apple-darwin.tar.gz.sha256"));
+    assert!(workflow.contains("soulmate-x86_64-apple-darwin.tar.gz.sha256"));
+    assert!(workflow.contains("soulmate-x86_64-unknown-linux-gnu.tar.gz.sha256"));
+    assert!(workflow.matches("--deny-self-hosted-runners").count() >= 3);
+    assert!(workflow.matches("actions/attest@").count() >= 2);
+    let publish = workflow
+        .find("run: sh scripts/publish-release-assets.sh")
+        .unwrap();
+    assert!(workflow[..publish].matches("gh attestation verify").count() >= 3);
+    assert!(workflow.contains("retention-days: 1"));
+    assert!(!workflow.contains("--clobber"));
+    assert!(!workflow.contains("gh release create"));
+    assert!(!workflow.contains("gh release upload"));
+
+    let installed = workflow
+        .split_once("\n  installed:\n")
+        .unwrap_or_else(|| panic!("missing installed post-publication job"))
+        .1;
+    assert!(installed.starts_with("    needs: publish\n"));
+    for (runner, host_os, host_arch, target) in [
+        (
+            "ubuntu-latest",
+            "Linux",
+            "x86_64",
+            "x86_64-unknown-linux-gnu",
+        ),
+        ("macos-15", "Darwin", "arm64", "aarch64-apple-darwin"),
+        ("macos-15-intel", "Darwin", "x86_64", "x86_64-apple-darwin"),
+    ] {
+        assert!(installed.contains(&format!("runner: {runner}")));
+        assert!(installed.contains(&format!("host_os: {host_os}")));
+        assert!(installed.contains(&format!("host_arch: {host_arch}")));
+        assert!(installed.contains(&format!("target: {target}")));
+    }
+    assert!(installed.contains("ref: ${{ github.ref }}"));
+    assert!(installed.contains("Download same-workflow expected release artifact"));
+    assert!(installed.contains("published-install-smoke.sh"));
+    assert!(installed.contains("SOULMATE_VERSION: ${{ github.ref_name }}"));
+}
+
+#[cfg(unix)]
+fn non_native_target_for_host(host_os: &str, host_arch: &str) -> Option<&'static str> {
+    match (host_os, host_arch) {
+        ("Linux", "x86_64") => Some("aarch64-apple-darwin"),
+        ("Darwin", "arm64") => Some("x86_64-apple-darwin"),
+        ("Darwin", "x86_64") => Some("aarch64-apple-darwin"),
+        _ => None,
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn required_host_fixture_targets_are_non_native() {
+    for ((host_os, host_arch), expected_target) in [
+        (("Linux", "x86_64"), "aarch64-apple-darwin"),
+        (("Darwin", "arm64"), "x86_64-apple-darwin"),
+        (("Darwin", "x86_64"), "aarch64-apple-darwin"),
+    ] {
+        assert_eq!(
+            non_native_target_for_host(host_os, host_arch),
+            Some(expected_target),
+            "fixture mapping for {host_os}/{host_arch}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn published_install_smoke_refuses_a_non_native_target_before_network_access() {
+    let fixture = Fixture::new("published-install-host-refusal");
+    let expected = fixture.0.join("expected");
+    fs::copy("/bin/true", &expected).unwrap();
+    make_executable(&expected);
+
+    let host_os =
+        String::from_utf8(Command::new("uname").arg("-s").output().unwrap().stdout).unwrap();
+    let host_arch =
+        String::from_utf8(Command::new("uname").arg("-m").output().unwrap().stdout).unwrap();
+    let target =
+        non_native_target_for_host(host_os.trim(), host_arch.trim()).unwrap_or_else(|| {
+            panic!(
+                "unsupported host fixture for published-install refusal: {}/{}",
+                host_os.trim(),
+                host_arch.trim()
+            )
+        });
+
+    let bin = fixture.0.join("bin");
+    fs::create_dir(&bin).unwrap();
+    let curl = bin.join("curl");
+    fs::write(
+        &curl,
+        "#!/bin/sh\nprintf called >> \"$SOULMATE_CURL_CALLS\"\nexit 99\n",
+    )
+    .unwrap();
+    make_executable(&curl);
+    let curl_calls = fixture.0.join("curl-calls");
+    let mut path_entries = vec![bin];
+    if let Some(path) = std::env::var_os("PATH") {
+        path_entries.extend(std::env::split_paths(&path));
+    }
+    let path = std::env::join_paths(path_entries).unwrap();
+
+    let output = Command::new(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/published-install-smoke.sh"),
+    )
+    .args([target, expected.to_str().unwrap()])
+    .current_dir(&fixture.0)
+    .env("PATH", path)
+    .env("SOULMATE_CURL_CALLS", &curl_calls)
+    .output()
+    .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("does not match target"));
+    assert!(!curl_calls.exists() || fs::read_to_string(curl_calls).unwrap().is_empty());
+}
+
+#[cfg(unix)]
+fn release_workflow_step(workflow: &str, name: &str) -> String {
+    let marker = format!("      - name: {name}\n");
+    let step = workflow
+        .split_once(&marker)
+        .unwrap_or_else(|| panic!("missing workflow step {name}"))
+        .1;
+    let run = step
+        .lines()
+        .find_map(|line| line.strip_prefix("        run: "))
+        .unwrap_or_else(|| panic!("missing run command for workflow step {name}"));
+    if run != "|" {
+        return run.to_owned();
+    }
+    let mut body = Vec::new();
+    let mut in_run = false;
+    for line in step.lines() {
+        if !in_run {
+            if line.starts_with("        run: |") {
+                in_run = true;
+            }
+            continue;
+        }
+        match line.strip_prefix("          ") {
+            Some(line) => body.push(line),
+            None => break,
+        }
+    }
+    body.join("\n")
+}
+
+#[cfg(unix)]
+fn host_sha256(path: &Path) -> String {
+    let output = match Command::new("sha256sum").arg(path).output() {
+        Ok(output) if output.status.success() => output,
+        _ => Command::new("shasum")
+            .args(["-a", "256"])
+            .arg(path)
+            .output()
+            .unwrap(),
+    };
+    assert!(output.status.success(), "{output:?}");
+    String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .to_owned()
+}
+
+#[cfg(unix)]
+fn make_executable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+#[cfg(unix)]
+fn publisher_fixture(label: &str, tampered_target: Option<&str>) -> Fixture {
+    let fixture = Fixture::new(&format!("publisher-{label}"));
+    let evidence = fixture.0.join("release-evidence");
+    let payloads = fixture.0.join("payloads");
+    let bin = fixture.0.join("bin");
+    fs::create_dir_all(&evidence).unwrap();
+    fs::create_dir_all(&payloads).unwrap();
+    fs::create_dir_all(&bin).unwrap();
+
+    let real_sha256sum = Command::new("sh")
+        .args(["-c", "command -v sha256sum"])
+        .output()
+        .unwrap();
+    let checksum_shim = bin.join("sha256sum");
+    if real_sha256sum.status.success() {
+        fs::write(
+            &checksum_shim,
+            b"#!/bin/sh\nexec \"$SOULMATE_REAL_SHA256SUM\" \"$@\"\n",
+        )
+        .unwrap();
+    } else {
+        let real_shasum = Command::new("sh")
+            .args(["-c", "command -v shasum"])
+            .output()
+            .unwrap();
+        assert!(real_shasum.status.success(), "shasum is required");
+        fs::write(
+            &checksum_shim,
+            b"#!/bin/sh\nexec \"$SOULMATE_REAL_SHASUM\" -a 256 \"$@\"\n",
+        )
+        .unwrap();
+    }
+    make_executable(&checksum_shim);
+
+    fs::write(
+        bin.join("gh"),
+        br#"#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "$SOULMATE_GH_CALLS"
+require_equal() {
+  if test "$1" != "$2"; then
+    printf '%s\n' "$3" >&2
+    exit 1
+  fi
+}
+case "$1 $2" in
+  'attestation verify')
+    archive=$3
+    bundle=
+    repository=
+    signer_workflow=
+    source_ref=
+    source_digest=
+    deny_self_hosted=no
+    while test "$#" -gt 0; do
+      case "$1" in
+        --bundle) bundle=$2; shift 2 ;;
+        --repo) repository=$2; shift 2 ;;
+        --signer-workflow) signer_workflow=$2; shift 2 ;;
+        --source-ref) source_ref=$2; shift 2 ;;
+        --source-digest) source_digest=$2; shift 2 ;;
+        --deny-self-hosted-runners) deny_self_hosted=yes; shift ;;
+        *) shift ;;
+      esac
+    done
+    require_equal "$repository" "$GITHUB_REPOSITORY" 'attestation repository mismatch'
+    require_equal "$signer_workflow" "$GITHUB_REPOSITORY/.github/workflows/release.yml" 'attestation workflow mismatch'
+    require_equal "$source_ref" "$GITHUB_REF" 'attestation source ref mismatch'
+    require_equal "$source_digest" "$GITHUB_SHA" 'attestation source digest mismatch'
+    require_equal "$deny_self_hosted" yes 'self-hosted runner denial is missing'
+    expected=$(sed -n 's/.*"fixture_archive_sha256":"\([0-9a-f]*\)".*/\1/p' "$bundle")
+    actual=$(sha256sum "$archive" | cut -d ' ' -f 1)
+    require_equal "$actual" "$expected" 'attestation archive digest mismatch'
+    exit 0
+    ;;
+  'release view') exit 1 ;;
+  'release create') exit 0 ;;
+  'release upload')
+    count=0
+    for argument do
+      case "$argument" in
+        dist/*) count=$((count + 1)) ;;
+        --clobber) exit 1 ;;
+      esac
+    done
+    test "$count" -eq 9
+    : > "$SOULMATE_UPLOAD_MARKER"
+    exit 0
+    ;;
+  *) exit 99 ;;
+esac
+"#,
+    )
+    .unwrap();
+    make_executable(&bin.join("gh"));
+
+    let targets = [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+    ];
+    for target in targets {
+        let stem = format!("soulmate-{target}");
+        let payload_dir = payloads.join(target);
+        fs::create_dir_all(&payload_dir).unwrap();
+        let payload = payload_dir.join(&stem);
+        fs::write(&payload, format!("verified fixture payload {target}\n")).unwrap();
+        make_executable(&payload);
+        let archive = evidence.join(format!("{stem}.tar.gz"));
+        let output = Command::new("tar")
+            .args(["-czf"])
+            .arg(&archive)
+            .args(["-C"])
+            .arg(&payload_dir)
+            .arg(&stem)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let digest = host_sha256(&archive);
+        fs::write(
+            evidence.join(format!("{stem}.tar.gz.sha256")),
+            format!("{digest}  {stem}.tar.gz\n"),
+        )
+        .unwrap();
+        fs::write(
+            evidence.join(format!("{target}.bundle.json")),
+            format!("{{\"fixture_archive_sha256\":\"{digest}\"}}\n"),
+        )
+        .unwrap();
+        let transferred = evidence.join(&stem);
+        fs::copy(&payload, &transferred).unwrap();
+        make_executable(&transferred);
+        if tampered_target == Some(target) {
+            fs::write(&transferred, b"unverified transferred raw binary\n").unwrap();
+        }
+    }
+    fs::create_dir_all(fixture.0.join("scripts")).unwrap();
+    fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/publish-release-assets.sh"),
+        fixture.0.join("scripts/publish-release-assets.sh"),
+    )
+    .unwrap();
+    fixture
+}
+
+#[cfg(unix)]
+fn run_publisher_steps(workflow: &str, fixture: &Fixture) -> Output {
+    let script = [
+        "Validate exact release inventory and transferred digests",
+        "Verify transferred archive provenance",
+        "Stage exactly the published release assets",
+        "Publish tag assets",
+    ]
+    .into_iter()
+    .map(|name| release_workflow_step(workflow, name))
+    .collect::<Vec<_>>()
+    .join("\n");
+    let old_path = std::env::var_os("PATH").unwrap();
+    let path = std::env::join_paths(
+        std::iter::once(fixture.0.join("bin")).chain(std::env::split_paths(&old_path)),
+    )
+    .unwrap();
+    let calls = fixture.0.join("gh-calls");
+    let marker = fixture.0.join("upload-marker");
+    let real_sha256sum = Command::new("sh")
+        .args(["-c", "command -v sha256sum || true"])
+        .output()
+        .unwrap();
+    let real_sha256sum = String::from_utf8(real_sha256sum.stdout).unwrap();
+    let real_shasum = Command::new("sh")
+        .args(["-c", "command -v shasum || true"])
+        .output()
+        .unwrap();
+    let real_shasum = String::from_utf8(real_shasum.stdout).unwrap();
+    fs::write(&calls, b"").unwrap();
+    Command::new("bash")
+        .args(["--noprofile", "--norc", "-eo", "pipefail", "-c", &script])
+        .current_dir(&fixture.0)
+        .env("PATH", path)
+        .env("SOULMATE_REAL_SHA256SUM", real_sha256sum.trim())
+        .env("SOULMATE_REAL_SHASUM", real_shasum.trim())
+        .env("SOULMATE_GH_CALLS", &calls)
+        .env("SOULMATE_UPLOAD_MARKER", &marker)
+        .env("GITHUB_REPOSITORY", "fixture/project")
+        .env("GITHUB_REF_NAME", "v99.0.0")
+        .env("GITHUB_REF", "refs/tags/v99.0.0")
+        .env("GITHUB_SHA", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        .env("GH_TOKEN", "fixture-token")
+        .output()
+        .unwrap()
+}
+
+#[cfg(unix)]
+fn run_attestation_shim(fixture: &Fixture, arguments: &[&str]) -> Output {
+    let old_path = std::env::var_os("PATH").unwrap();
+    let path = std::env::join_paths(
+        std::iter::once(fixture.0.join("bin")).chain(std::env::split_paths(&old_path)),
+    )
+    .unwrap();
+    let real_sha256sum = Command::new("sh")
+        .args(["-c", "command -v sha256sum || true"])
+        .output()
+        .unwrap();
+    let real_sha256sum = String::from_utf8(real_sha256sum.stdout).unwrap();
+    let real_shasum = Command::new("sh")
+        .args(["-c", "command -v shasum || true"])
+        .output()
+        .unwrap();
+    let real_shasum = String::from_utf8(real_shasum.stdout).unwrap();
+    Command::new(fixture.0.join("bin/gh"))
+        .args(arguments)
+        .current_dir(&fixture.0)
+        .env("PATH", path)
+        .env("SOULMATE_REAL_SHA256SUM", real_sha256sum.trim())
+        .env("SOULMATE_REAL_SHASUM", real_shasum.trim())
+        .env("SOULMATE_GH_CALLS", fixture.0.join("gh-calls"))
+        .env("SOULMATE_UPLOAD_MARKER", fixture.0.join("upload-marker"))
+        .env("GITHUB_REPOSITORY", "fixture/project")
+        .env("GITHUB_REF", "refs/tags/v99.0.0")
+        .env("GITHUB_SHA", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        .output()
+        .unwrap()
+}
+
+#[cfg(unix)]
+#[test]
+fn publisher_attestation_shim_rejects_changed_archive_and_wrong_provenance() {
+    let fixture = publisher_fixture("attestation-negative", None);
+    let valid = [
+        "attestation",
+        "verify",
+        "release-evidence/soulmate-x86_64-apple-darwin.tar.gz",
+        "--bundle",
+        "release-evidence/x86_64-apple-darwin.bundle.json",
+        "--repo",
+        "fixture/project",
+        "--signer-workflow",
+        "fixture/project/.github/workflows/release.yml",
+        "--source-ref",
+        "refs/tags/v99.0.0",
+        "--source-digest",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "--deny-self-hosted-runners",
+    ];
+    expect_success(run_attestation_shim(&fixture, &valid));
+
+    let archive = fixture
+        .0
+        .join("release-evidence/soulmate-x86_64-apple-darwin.tar.gz");
+    let original = fs::read(&archive).unwrap();
+    let mut altered = original.clone();
+    altered.extend_from_slice(b"altered after transfer");
+    fs::write(&archive, altered).unwrap();
+    expect_failure(
+        run_attestation_shim(&fixture, &valid),
+        "attestation shim accepted an altered archive",
+    );
+    fs::write(&archive, original).unwrap();
+
+    let malformed = [
+        "attestation",
+        "verify",
+        "release-evidence/soulmate-x86_64-apple-darwin.tar.gz",
+        "--bundle",
+        "release-evidence/x86_64-apple-darwin.bundle.json",
+        "--repo",
+        "wrong/project",
+        "--signer-workflow",
+        "fixture/project/.github/workflows/release.yml",
+        "--source-ref",
+        "refs/tags/v99.0.0",
+        "--source-digest",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "--deny-self-hosted-runners",
+    ];
+    expect_failure(
+        run_attestation_shim(&fixture, &malformed),
+        "attestation shim accepted a wrong repository",
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn publisher_rejects_tampered_transferred_raw_bytes_before_upload_for_each_target() {
+    let workflow = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(".github/workflows/release.yml"),
+    )
+    .unwrap();
+    let provenance = release_workflow_step(&workflow, "Verify transferred archive provenance");
+    assert!(provenance.contains("cmp \"$payload_dir/soulmate-$target\""));
+
+    let valid = publisher_fixture("valid", None);
+    let output = run_publisher_steps(&workflow, &valid);
+    expect_success(output);
+    assert!(valid.0.join("upload-marker").exists());
+    assert_eq!(
+        fs::read_to_string(valid.0.join("gh-calls"))
+            .unwrap()
+            .matches("attestation verify")
+            .count(),
+        3
+    );
+
+    for target in [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+    ] {
+        let fixture = publisher_fixture(target, Some(target));
+        let output = run_publisher_steps(&workflow, &fixture);
+        assert!(
+            !output.status.success(),
+            "unexpected pass: tampered transferred raw binary for {target}: {output:?}"
+        );
+        assert!(
+            !output.stdout.is_empty() || !output.stderr.is_empty(),
+            "missing failure detail: tampered transferred raw binary for {target}"
+        );
+        let calls = fs::read_to_string(fixture.0.join("gh-calls")).unwrap();
+        assert_eq!(calls.matches("attestation verify").count(), 3);
+        assert!(!fixture.0.join("upload-marker").exists());
+        assert!(!fixture.0.join("dist").exists());
+    }
+}
