@@ -362,10 +362,9 @@ fn scan_metadata(bytes: &[u8], ignored_commit: Option<&[u8]>, findings: &mut Fin
         if ignored_commit.is_some_and(|ignored| sha == ignored) {
             continue;
         }
-        for (name, email, committer) in [
-            (commit[1], commit[2], false),
-            (commit[3], commit[4], true),
-        ] {
+        for (name, email, committer) in
+            [(commit[1], commit[2], false), (commit[3], commit[4], true)]
+        {
             let name = String::from_utf8_lossy(name);
             let email = String::from_utf8_lossy(email).trim().to_ascii_lowercase();
             let canonical = name.trim() == ALLOWED_NAME && email == ALLOWED_EMAIL;
@@ -510,11 +509,7 @@ fn mailmap_accepts_only_role_specific_github_squash_identities() {
         "commit\0{GITHUB_COMMITTER_NAME}\0{GITHUB_COMMITTER_EMAIL}\0{ALLOWED_NAME}\0{ALLOWED_EMAIL}\0"
     );
     let mut github_author_findings = Findings::new();
-    scan_metadata(
-        github_author.as_bytes(),
-        None,
-        &mut github_author_findings,
-    );
+    scan_metadata(github_author.as_bytes(), None, &mut github_author_findings);
     assert!(github_author_findings
         .iter()
         .any(|(category, _)| category == "public-identity-name-mismatch"));
