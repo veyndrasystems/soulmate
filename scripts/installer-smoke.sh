@@ -84,5 +84,10 @@ test "$("$prefix/soulmate" version)" = "$version"
 test "$(sed -n '1p' "$calls")" = "https://github.com/$repo/releases/download/$tag/$archive"
 test "$(sed -n '2p' "$calls")" = "https://github.com/$repo/releases/download/$tag/$checksum"
 test "$(wc -l < "$calls" | tr -d ' ')" = 2
+benchmark_line=$(grep -n -F "Next: \"$prefix/soulmate\" benchmark" "$root/install.log" | cut -d: -f1)
+init_line=$(grep -n -F "Then: cd YOUR_PROJECT && \"$prefix/soulmate\" init --mode portable" "$root/install.log" | cut -d: -f1)
+test -n "$benchmark_line"
+test -n "$init_line"
+test "$benchmark_line" -lt "$init_line"
 "$script_dir/onboarding-smoke.sh" "$prefix/soulmate" "$repo_root/skills/soulmate/SKILL.md" >/dev/null
 printf '%s\n' "installer smoke passed target=$target version=$version"

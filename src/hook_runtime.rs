@@ -33,12 +33,20 @@ pub fn run() -> Result<(), String> {
     if !EVENTS.contains(&event) {
         return Ok(());
     }
+    let update_context = if event == "SessionStart" {
+        crate::update::session_context()
+    } else {
+        None
+    };
     let cwd = object
         .get("cwd")
         .or_else(|| object.get("current_directory"))
         .and_then(Value::as_str)
         .unwrap_or("");
     let Some(project) = absolute_directory(cwd) else {
+        if let Some(text) = update_context.as_deref() {
+            emit(event, text)?;
+        }
         return Ok(());
     };
     let portable = project.join("soulmate.json");
@@ -50,21 +58,39 @@ pub fn run() -> Result<(), String> {
     } else {
         match crate::project_layout::config_for_product(&project) {
             Ok(Some(path)) => path,
-            _ => return Ok(()),
+            _ => {
+                if let Some(text) = update_context.as_deref() {
+                    emit(event, text)?;
+                }
+                return Ok(());
+            }
         }
     };
     let loaded = match crate::config::load(config_path.to_str()) {
         Ok(value) => value,
-        Err(_) => return Ok(()),
+        Err(_) => {
+            if let Some(text) = update_context.as_deref() {
+                emit(event, text)?;
+            }
+            return Ok(());
+        }
     };
     if fs::canonicalize(&loaded.product_root).ok().as_deref() != Some(project.as_path())
         || (loaded.mode == crate::project_layout::Mode::Portable
             && !contained_existing(&project, &loaded.control_root))
     {
+        if let Some(text) = update_context.as_deref() {
+            emit(event, text)?;
+        }
         return Ok(());
     }
     let text = if event == "SessionStart" {
-        session_summary(&loaded.config)
+        let mut text = session_summary(&loaded.config);
+        if let Some(update) = update_context {
+            text.push('\n');
+            text.push_str(&update);
+        }
+        text
     } else {
         let Some(agent) = exact_agent(object, &loaded.config) else {
             return Ok(());
@@ -99,6 +125,10 @@ pub fn run() -> Result<(), String> {
         };
         bounded(context)
     };
+    emit(event, &text)
+}
+
+fn emit(event: &str, text: &str) -> Result<(), String> {
     let output = serde_json::to_string(
         &json!({"hookSpecificOutput":{"hookEventName":event,"additionalContext":text}}),
     )

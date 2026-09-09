@@ -49,12 +49,15 @@ and presentation remain host responsibilities.
 
 ## What the hook and tests establish
 
-The optional `SessionStart` hook emits a bounded advisory on startup, resume,
-compact and clear events. A reported event describes a host action; Soulmate
-does not request that action. The hook uses no transcript or session path from
-the payload, launches no host process, and emits no lifecycle control. Ordinary
-turn events are silent. Missing, malformed or unconfigured input remains
-fail-open.
+The optional `SessionStart` hook emits bounded project continuity context on
+startup, resume, compact and clear events. When an active host integration
+detects a newer public release, an update-only advisory context may also appear
+even without a configured project; it asks the root agent to mention the
+option, and model surfacing is advisory rather than proven. Project continuity
+remains fail-open and silent for missing, malformed or unconfigured input. The
+hook uses no transcript or session path from the payload, launches no host
+process, and emits no lifecycle control. Ordinary turn events and SubagentStart
+never receive update notices.
 
 Executable regression tests check output shape and size, silent events,
 preserved disposable host-file sentinels, host-command launch traps, and the

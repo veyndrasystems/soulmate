@@ -2,7 +2,7 @@ use serde_json::json;
 
 use crate::{
     args::{self, Arguments},
-    away, config, envelope, forgetting, hook_runtime, hooks, memory, profile, receipt, run,
+    away, config, envelope, forgetting, hook_runtime, hooks, memory, profile, receipt, run, update,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -59,6 +59,11 @@ pub fn run(argv: Vec<String>) -> Result<(), String> {
         args::assert_positionals(command, &parsed, 0)?;
         print_help();
         return Ok(());
+    }
+    if command == "update" {
+        args::assert_options(command, &parsed, &[])?;
+        args::assert_positionals(command, &parsed, 0)?;
+        return update::explicit_update();
     }
     match command {
         "hook-protocol" => {
@@ -726,6 +731,7 @@ fn print_advanced_help() {
     println!(
         "Soulmate {VERSION}\n\nDo the next change\n  soulmate init --mode portable --root ROOT\n  soulmate brief worker --task TASK --config CONFIG\n  soulmate run start WORKFLOW --goal GOAL --ledger LEDGER [--check-command COMMAND]\n  soulmate run next LEDGER [--text]\n  soulmate run submit AGENT LEDGER --outcome OUTCOME --artifact ARTIFACT [--event-id]\n  soulmate run record-check LEDGER --target EVENT_SHA --check-command COMMAND --exit-code CODE [--duration-ms MS]\n\nWhen work fails or changes\n  soulmate run status LEDGER\n  soulmate run explain LEDGER [--event PROTECTION_EVENT_SHA]\n  soulmate run report LEDGER [LEDGER ...]\n  soulmate run inspect LEDGER\n  soulmate run supersede OLD_LEDGER --workflow WORKFLOW --goal GOAL --ledger NEW_LEDGER\n  --text prints a readable pending assignment; --event-id prints the submitted event hash.\n  Each output flag conflicts with --json; default JSON is unchanged.\n\nOptional surfaces\n  Advanced commands: bind, doctor, plan, verify, profile, migrate, memory (resolve/inspect/lifecycle), away, hooks, hook-protocol, hook-run, version.\n  Run value proof: the host executes the configured check, then reports its actual result with 'run record-check'; use 'run status', 'run explain', and 'run report' for bounded evidence views.\n  Run 'soulmate migrate layout --config CONFIG' to inspect a legacy profile migration, then repeat with --apply. Use 'migrate paths' for canonical harness and state directories.\n  Use 'soulmate run supersede OLD_LEDGER --workflow WORKFLOW --goal GOAL --ledger NEW_LEDGER' after configuration, profile, memory, boundary, or harness-receipt drift."
     );
+    println!("Run 'soulmate update' to explicitly install the newest allowed release.");
 }
 
 fn print_json(value: &serde_json::Value) -> Result<(), String> {

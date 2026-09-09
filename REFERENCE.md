@@ -16,7 +16,7 @@ Install the supported release as a single Rust binary. Node.js, npm, Python,
 and Cargo are not required after installation:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.13.0-rc.1/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.14.0-rc.1/install.sh | sh
 soulmate init --mode portable
 soulmate brief worker --task "Describe the change you want to make" --config soulmate.json
 soulmate run start change --goal "Describe the bounded change" --check-command "YOUR_TEST_COMMAND" --ledger .soulmate/runs/run.jsonl --config soulmate.json
@@ -30,7 +30,7 @@ The pinned preview includes the `--event-id`/`--text` forms below. Older
 0.12.0 binaries retain the JSON workflow but do not recognize these flags.
 A skill refresh alone does not upgrade the binary.
 
-The v0.13.0-rc.1 candidate targets Linux x86_64 and native macOS on Apple
+The v0.14.0-rc.1 candidate targets Linux x86_64 and native macOS on Apple
 Silicon and Intel. Windows uses the Linux artifact through Ubuntu on WSL 2,
 with the agent, Soulmate, and project inside that distribution. The
 [platform matrix](docs/platform-support.md) names the native build and
@@ -225,13 +225,27 @@ files carrying Soulmate's ownership marker; unowned or conflicting files cause
 the command to refuse the update:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.13.0-rc.1/install.sh | SOULMATE_VERSION=v0.13.0-rc.1 sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.14.0-rc.1/install.sh | SOULMATE_VERSION=v0.14.0-rc.1 sh
 soulmate init --refresh-skills --root PATH
 ```
 
 The installer verifies the tagged archive checksum and stages the replacement
 before switching the binary. It never rewrites project configuration or skill
 copies; refresh remains a separate, reviewable project action.
+
+### Conversational update notice
+
+An active native Codex or Claude `SessionStart` integration may present
+additional context asking the root agent to mention a newer public release.
+The user cache is disposable, checked at most every 24 hours, and failures use
+a one-hour backoff. Set `SOULMATE_NO_UPDATE_CHECK=1` to opt out. The notice
+never installs software, and SubagentStart does not receive it; model surfacing
+is advisory and not proven by the hook. Stable builds consider stable releases;
+prerelease builds may consider stable and prerelease releases. Run
+`soulmate update` explicitly to install a validated release. Versions released
+before this feature cannot self-notify, so install `0.14.0-rc.1` once to enable
+future notices when the integration is active. A first SessionStart may then
+perform the bounded lookup; later starts use the cache.
 
 The installer currently verifies the archive's SHA-256 checksum only. Online
 GitHub provenance is a separate, optional check for downloaded archives; it
@@ -563,14 +577,14 @@ must be declared separately when you manage their projections with dotagents.
 For an existing project with `agents.toml`:
 
 ```text
-dotagents --project add veyndrasystems/soulmate --ref v0.13.0-rc.1
+dotagents --project add veyndrasystems/soulmate --ref v0.14.0-rc.1
 ```
 
 For a new dotagents-managed project:
 
 ```text
 dotagents --project init
-dotagents --project add veyndrasystems/soulmate --ref v0.13.0-rc.1
+dotagents --project add veyndrasystems/soulmate --ref v0.14.0-rc.1
 ```
 
 During `dotagents --project init`, select the hosts you use. `dotagents add`
@@ -696,7 +710,7 @@ ControlRoot and pass it only when creating an existing brief or plan receipt:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.13.0-rc.1/schema/harness-manifest.schema.json",
+  "$schema": "https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.14.0-rc.1/schema/harness-manifest.schema.json",
   "version": 1,
   "project": { "id": "my-project", "session": "codex-2026-08-30" },
   "harness": { "name": "my-harness", "version": "2026.08.30" },

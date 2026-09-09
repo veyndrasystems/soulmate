@@ -309,6 +309,17 @@ fn reality_and_decision_guidance_is_embedded_and_distributed() {
         "unavailable observation remains unverified",
         "insufficient evidence is not product validation",
         "precise owner decision",
+        "before a materially costly dependent phase, or before replacing or retiring a working capability",
+        "service, execution environment or host, and the relevant configuration, session, or capability",
+        "cheapest decisive, authorized evidence already available",
+        "unknown, merely reported, stale, or adjacent evidence",
+        "distinguish early feasibility from replacement readiness",
+        "actual supported-entry, selection, invocation, and required-behavior checks before cutover",
+        "a blocker stops only dependent work",
+        "recheck only required conditions that are volatile or were invalidated",
+        "do not retire a working fallback while any required replacement target lacks fresh target-matching evidence",
+        "a local native child is not execution on a remote target",
+        "keep ordinary reversible single-host work direct and proportionate",
     ];
     for skill in std::iter::once(source.to_owned()).chain(
         projections
@@ -320,6 +331,29 @@ fn reality_and_decision_guidance_is_embedded_and_distributed() {
             assert!(
                 normalized.contains(phrase),
                 "missing {phrase:?} in distributed Soulmate skill"
+            );
+        }
+        let readiness = normalized.find("## target-bound readiness").unwrap();
+        let continuity = normalized
+            .find("## native conversation continuity")
+            .unwrap();
+        assert!(
+            readiness < continuity,
+            "readiness guidance moved after continuity"
+        );
+        let ordering = [
+            "before a materially costly dependent phase",
+            "distinguish early feasibility from replacement readiness",
+            "a blocker stops only dependent work",
+            "immediately before cutover",
+            "a local native child is not execution on a remote target",
+            "keep ordinary reversible single-host work direct and proportionate",
+        ];
+        for pair in ordering.windows(2) {
+            assert!(
+                normalized.find(pair[0]).unwrap() < normalized.find(pair[1]).unwrap(),
+                "readiness guidance order changed: {:?}",
+                pair
             );
         }
     }

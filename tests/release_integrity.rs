@@ -6,6 +6,8 @@ use std::{
     process::{Command, Output},
 };
 
+use serde_json::Value;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const RELEASE_FILES: &[&str] = &[
     "Cargo.toml",
@@ -215,6 +217,83 @@ fn absent_or_drifted_required_version_values_are_rejected() {
             expect_failure(gate("check-release-refs.sh", &fixture.0), file);
         }
     }
+}
+
+#[test]
+fn plugin_manifests_keep_portable_openai_and_compatibility_presentation() {
+    let first_sentence =
+        "It verifies what you asked an agent to do and what came back, in the same record.";
+    let cli_boundary = "Use it with a configured project; plugin installation provides host guidance and does not install the separate soulmate CLI.";
+    let presentation = format!("{first_sentence} {cli_boundary}");
+    let root: Value = serde_json::from_str(include_str!("../plugin.json")).unwrap();
+    let codex: Value = serde_json::from_str(include_str!(
+        "../systems.veyndra.soulmate/.codex-plugin/plugin.json"
+    ))
+    .unwrap();
+    let claude: Value = serde_json::from_str(include_str!(
+        "../systems.veyndra.soulmate/.claude-plugin/plugin.json"
+    ))
+    .unwrap();
+
+    for description in [
+        root["description"].as_str().unwrap(),
+        codex["description"].as_str().unwrap(),
+        claude["description"].as_str().unwrap(),
+    ] {
+        assert!(description.starts_with(first_sentence));
+        assert!(description.contains(cli_boundary));
+    }
+
+    assert_eq!(
+        root["$schema"].as_str(),
+        Some("https://agent-plugins.org/schemas/1.0.0/plugin.schema.json")
+    );
+    let allowed_root_fields = [
+        "$schema",
+        "name",
+        "version",
+        "description",
+        "author",
+        "homepage",
+        "repository",
+        "license",
+        "keywords",
+        "extensions",
+    ];
+    for field in root.as_object().unwrap().keys() {
+        assert!(
+            allowed_root_fields.contains(&field.as_str()),
+            "portable root manifest has schema-unknown field {field:?}"
+        );
+    }
+    assert!(!root.as_object().unwrap().contains_key("skills"));
+    assert!(!root.as_object().unwrap().contains_key("hooks"));
+    assert_eq!(
+        codex["hooks"].as_str(),
+        Some("./systems.veyndra.soulmate/hooks/hooks.json")
+    );
+    assert_eq!(
+        claude["hooks"].as_str(),
+        Some("./systems.veyndra.soulmate/hooks/hooks.json")
+    );
+    assert!(Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("skills/soulmate/SKILL.md")
+        .is_file());
+    assert_eq!(
+        root["extensions"]["com.openai"]["interface"]["longDescription"].as_str(),
+        Some(presentation.as_str())
+    );
+    assert_eq!(
+        codex["interface"]["longDescription"].as_str(),
+        Some(presentation.as_str())
+    );
+    assert_eq!(codex["skills"].as_str(), Some("./skills/"));
+    assert_eq!(
+        root["extensions"]["systems.veyndra.soulmate"]["purpose"].as_str(),
+        Some(
+            "Preserved host-hook compatibility resources; host-specific activation is not implied."
+        )
+    );
 }
 
 #[cfg(unix)]

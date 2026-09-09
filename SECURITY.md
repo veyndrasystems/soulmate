@@ -1,5 +1,21 @@
 # Security boundary
 
+## Update checks and explicit installation
+
+An active native Codex or Claude SessionStart integration may query the fixed
+public GitHub releases endpoint without credentials and present additional
+context asking the root agent to mention a notice from a disposable,
+permission-restricted cache. Model surfacing is advisory and not proven by the
+hook. SubagentStart and opted-out invocations stay silent. The notice path
+never installs software. `soulmate update` is the explicit install boundary: it
+accepts only a validated release tag, downloads the matching installer from the
+fixed project origin, reuses the installer's checksum and atomic replacement,
+and verifies the resulting binary. A failed update normally restores the prior
+binary; if restoration itself fails, the command reports that failure and
+retains the recoverable backup.
+The checksum protects the downloaded archive; this flow does not claim
+attestation or independent provenance verification.
+
 Soulmate is a local protocol companion. It reads the configured project file
 and declared profiles, rejects escaping paths, and does not provide an OS
 sandbox, process isolation, model-compliance proof, or transcript scrubber.

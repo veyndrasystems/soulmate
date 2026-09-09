@@ -24,7 +24,7 @@ The first experiment needs no account, API key, model, project configuration,
 or language runtime. Your real work continues in your existing agent host.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.13.0-rc.1/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.14.0-rc.1/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
@@ -144,6 +144,17 @@ hashes are not anonymization. Read [SECURITY.md](SECURITY.md) before real work.
 
 The installer reinstalls its pinned version. After a compatible binary upgrade,
 refresh owned skill copies with `soulmate init --refresh-skills --root PATH`.
+When an active native Codex or Claude SessionStart integration is available, it
+may present additional context asking the root agent to mention a cached notice
+for a newer release in the next natural response. Model surfacing is advisory
+and is not proven by the hook. The check is a best-effort public GitHub
+releases request, stores only short-lived release metadata in a disposable
+cache, and can be disabled with `SOULMATE_NO_UPDATE_CHECK=1`. It never
+installs from the conversation context, and SubagentStart receives no update
+notice. Run
+`soulmate update` for an explicit install; it validates the selected tag,
+reuses the installer checksum and atomic replacement, and verifies the installed
+binary. This is not an attestation or provenance claim.
 The new preview's `check` shows the running binary and managed-skill hashes;
 a difference is a prompt to inspect versions, not proof of incompatibility.
 Checked ledgers use run-event format 3; use the

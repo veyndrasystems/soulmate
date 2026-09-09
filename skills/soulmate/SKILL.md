@@ -85,6 +85,28 @@ replace existing review responsibilities. Ordinary reversible work stays
 direct; explicit use of either method does not require initialization,
 a ledger, extra agents, durable memory, or a governed run.
 
+## Target-bound readiness
+
+Before a materially costly dependent phase, or before replacing or retiring a
+working capability, identify the exact required targets and foreseeable
+blockers. Bind each target to the service, execution environment or host, and
+the relevant configuration, session, or capability when material. Reuse the
+Reality claims and Decision closure methods to obtain the cheapest decisive,
+authorized evidence already available; do not treat unknown, merely reported,
+stale, or adjacent evidence as satisfying that target.
+
+Distinguish early feasibility from replacement readiness: some checks need a
+candidate artifact, so perform the feasibility probe before dependent cost and
+the actual supported-entry, selection, invocation, and required-behavior
+checks before cutover. A blocker stops only dependent work; safe independent
+preparation may continue. Immediately before cutover, recheck only required
+conditions that are volatile or were invalidated, retain unaffected valid
+evidence, and do not retire a working fallback while any required replacement
+target lacks fresh target-matching evidence. A local native child is not
+execution on a remote target; return the unavailable boundary instead of
+repeating the same invalid assignment. Keep ordinary reversible single-host
+work direct and proportionate.
+
 ## Native conversation continuity
 
 Keep the existing root host conversation. Role selection, a brief, run

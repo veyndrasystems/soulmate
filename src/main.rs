@@ -35,6 +35,7 @@ mod run_ledger;
 mod run_presentation;
 mod run_state;
 mod run_value;
+mod update;
 mod value_benchmark;
 
 fn main() {

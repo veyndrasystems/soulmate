@@ -1,13 +1,24 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "soulmate",
-  "version": "0.13.0-rc.1",
-  "description": "Bounded coding-agent handoffs and memory governance evidence.",
+  "version": "0.14.0-rc.1",
+  "description": "It verifies what you asked an agent to do and what came back, in the same record. Use it with a configured project; plugin installation provides host guidance and does not install the separate soulmate CLI.",
   "author": { "name": "Veyndra Systems", "url": "https://github.com/veyndrasystems" },
   "repository": "https://github.com/veyndrasystems/soulmate",
   "license": "MIT",
   "keywords": ["agents", "briefs", "orchestration", "receipts"],
   "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Soulmate",
+        "shortDescription": "Inspectable handoffs for a configured project",
+        "longDescription": "It verifies what you asked an agent to do and what came back, in the same record. Use it with a configured project; plugin installation provides host guidance and does not install the separate soulmate CLI.",
+        "developerName": "Veyndra Systems",
+        "category": "Productivity",
+        "capabilities": ["Read"],
+        "defaultPrompt": ["Use Soulmate with this configured project for a bounded, inspectable handoff."]
+      }
+    },
     "systems.veyndra.soulmate": {
       "purpose": "Preserved host-hook compatibility resources; host-specific activation is not implied."
     }

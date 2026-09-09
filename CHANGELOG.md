@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0-rc.1
+
+- Add target-bound readiness guidance before materially costly dependent work or cutover while safe independent work continues.
+- Lead the installer to the setup-free benchmark before portable project initialization.
+- Align plugin presentation with the public product statement and correct the portable-root manifest schema usage; plugin installation does not install the separate CLI.
+- Add an active SessionStart agent advisory for newer public releases and an explicit `soulmate update` path; neither performs an automatic install.
+- Use a disposable user cache with bounded public release metadata; no persisted-format, dependency, or migration change is claimed.
+
 ## 0.13.0-rc.1
 
 - Add canonical Soulmate guidance for bounded reality claims and decision closure.

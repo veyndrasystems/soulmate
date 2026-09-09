@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 repo="${SOULMATE_REPOSITORY:-veyndrasystems/soulmate}"
-version="${SOULMATE_VERSION:-v0.13.0-rc.1}"
+version="${SOULMATE_VERSION:-v0.14.0-rc.1}"
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 arch=$(uname -m)
 case "$os:$arch" in
@@ -41,4 +41,5 @@ case ":${PATH:-}:" in
   *":$prefix:"*) ;;
   *) echo "Add $prefix to PATH to invoke soulmate by name." ;;
 esac
-echo "Next: cd YOUR_PROJECT && $prefix/soulmate init --mode portable"
+echo "Next: \"$prefix/soulmate\" benchmark"
+echo "Then: cd YOUR_PROJECT && \"$prefix/soulmate\" init --mode portable"
