@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0-rc.1
+
+- Add canonical Soulmate guidance for bounded reality claims and decision closure.
+
 ## 0.12.1-rc.3
 
 - Ship the `v0.12.1-rc.3` prerelease from source snapshot `4199ebd`, with native builds, packaged installation, and public asset installation validated for Linux x86_64 and both Mac architectures; WSL exercises the same Linux artifact inside Ubuntu. See [platform support details](docs/platform-support.md) and [public release workflow](https://github.com/veyndrasystems/soulmate/actions/runs/34094355184).

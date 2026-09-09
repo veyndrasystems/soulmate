@@ -9,13 +9,17 @@ use std::{
 const SOULMATE_SKILL: &[u8] = include_bytes!("../skills/soulmate/SKILL.md");
 const AWAY_GUIDE: &str = include_str!("../docs/codex-tmux-away.md");
 const REFERENCE: &str = include_str!("../REFERENCE.md");
+const EXTERNAL_SENTINEL: &[u8] = b"host-owned sentinel\n";
 
 fn temp(label: &str) -> PathBuf {
     support::temp(&format!("skill-refresh-{label}"))
 }
 
 fn invoke(arguments: &[&str], bindings: &Path) -> Output {
+    let home = bindings.parent().unwrap().join("home");
+    fs::create_dir_all(&home).unwrap();
     Command::new(env!("CARGO_BIN_EXE_soulmate"))
+        .env("HOME", home)
         .env("SOULMATE_BINDINGS_DIR", bindings)
         .args(arguments)
         .output()
@@ -32,6 +36,7 @@ fn output_text(output: &Output) -> String {
 
 fn local_project(label: &str) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
     let base = temp(label);
+    fs::write(base.join("external-sentinel"), EXTERNAL_SENTINEL).unwrap();
     let product = base.join("product");
     let control = base.join("control");
     let state = base.join("state");
@@ -265,4 +270,58 @@ fn relative_skill(path: &Path, control: &Path) -> String {
         .unwrap()
         .to_string_lossy()
         .into_owned()
+}
+#[test]
+fn reality_and_decision_guidance_is_embedded_and_distributed() {
+    let (base, _product, control, _bindings) = local_project("reality-decision");
+    let source = std::str::from_utf8(SOULMATE_SKILL).unwrap();
+    let projections = [
+        control.join(".agents/skills/soulmate/SKILL.md"),
+        control.join(".claude/skills/soulmate/SKILL.md"),
+    ];
+    assert_eq!(
+        fs::read(base.join("external-sentinel")).unwrap(),
+        EXTERNAL_SENTINEL
+    );
+    let normalize = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let required = [
+        "authored source -> projection -> discovery -> invocation -> effective instructions/permissions -> behavior -> outcome",
+        "verified within scope",
+        "failed",
+        "unverified",
+        "strongest supported claim",
+        "smallest decisive next probe",
+        "installation shows presence",
+        "none of these alone proves invocation",
+        "absent observed need or advantage in the tested context",
+        "faulty implementation",
+        "inconclusive test",
+        "change",
+        "keep",
+        "defer",
+        "stop",
+        "remaining unknowns",
+        "reopening condition",
+        "does not require initialization, a ledger, extra agents, durable memory, or a governed run",
+        "ordinary single-agent work proceeds directly",
+        "exact run, attempt, artifact, and context",
+        "may coexist across different findings",
+        "unavailable observation remains unverified",
+        "insufficient evidence is not product validation",
+        "precise owner decision",
+    ];
+    for skill in std::iter::once(source.to_owned()).chain(
+        projections
+            .iter()
+            .map(|path| fs::read_to_string(path).unwrap()),
+    ) {
+        let normalized = normalize(&skill).to_lowercase();
+        for phrase in required {
+            assert!(
+                normalized.contains(phrase),
+                "missing {phrase:?} in distributed Soulmate skill"
+            );
+        }
+    }
+    fs::remove_dir_all(base).unwrap();
 }

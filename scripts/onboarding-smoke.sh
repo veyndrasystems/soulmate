@@ -1,12 +1,14 @@
 #!/bin/sh
 set -eu
 
-bin=${1:?usage: onboarding-smoke.sh BINARY}
+bin=${1:?usage: onboarding-smoke.sh BINARY EXPECTED_SKILL}
+expected=${2:?usage: onboarding-smoke.sh BINARY EXPECTED_SKILL}
 case "$bin" in
   /*) ;;
   *) bin="$(cd "$(dirname "$bin")" && pwd)/$(basename "$bin")" ;;
 esac
 test -x "$bin"
+test -f "$expected"
 
 root=$(mktemp -d)
 cleanup() { find "$root" -depth -delete; }
@@ -28,6 +30,9 @@ esac
 
 test -f "$root/project/.agents/skills/soulmate/SKILL.md"
 test -f "$root/project/.claude/skills/soulmate/SKILL.md"
+cmp "$expected" "$root/project/.agents/skills/soulmate/SKILL.md"
+cmp "$expected" "$root/project/.claude/skills/soulmate/SKILL.md"
+cmp "$root/project/.agents/skills/soulmate/SKILL.md" "$root/project/.claude/skills/soulmate/SKILL.md"
 invoke brief worker --task "First bounded handoff" --config "$config" >/dev/null
 invoke run start change --goal "First bounded handoff" \
   --ledger "$ledger" --config "$config" >/dev/null

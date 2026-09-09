@@ -1,10 +1,11 @@
 # Install the binary for your platform
 
-The public prerelease `v0.12.1-rc.3` is built from reviewed source snapshot
-`4199ebd`. Its public release workflow validated native builds, packaged
-installation, and public asset installation for Linux x86_64 and macOS on
-Apple Silicon and Intel; WSL exercises the same Linux artifact inside Ubuntu.
-See the [public release workflow](https://github.com/veyndrasystems/soulmate/actions/runs/34094355184).
+The selected prerelease `v0.13.0-rc.1` targets Linux x86_64 and macOS on
+Apple Silicon and Intel. The public release workflow is the authoritative path
+for validating native builds, packaged installation, and public asset
+installation; this source snapshot does not claim those checks have passed for
+this candidate. WSL uses the same Linux artifact inside Ubuntu. See the
+[public release workflow](https://github.com/veyndrasystems/soulmate/actions/workflows/release.yml).
 
 Use the pinned installer in the [README](../README.md#install-and-see-the-result).
 It selects an archive from the operating system and architecture, checks its
@@ -13,10 +14,10 @@ is needed to run the installed binary or `soulmate benchmark`.
 
 | Installed target | Release archive target | Validation boundary |
 | --- | --- | --- |
-| Linux x86_64 / amd64 | `x86_64-unknown-linux-gnu` | Native build, packaged installation and public asset installation passed in the public release workflow. |
+| Linux x86_64 / amd64 | `x86_64-unknown-linux-gnu` | Required release gates: native build, packaged installation, and public asset installation. |
 | Ubuntu on WSL 2 | `x86_64-unknown-linux-gnu` | Exercises the same Linux artifact inside Ubuntu; keep project, agent host, and Soulmate in the same Ubuntu distribution. |
-| macOS on Apple Silicon | `aarch64-apple-darwin` | Native macOS 15 build, packaged installation and public asset installation passed in the public release workflow. |
-| macOS on Intel | `x86_64-apple-darwin` | Native macOS 15 build, packaged installation and public asset installation passed in the public release workflow. |
+| macOS on Apple Silicon | `aarch64-apple-darwin` | Required release gates: native macOS 15 build, packaged installation, and public asset installation. |
+| macOS on Intel | `x86_64-apple-darwin` | Required release gates: native macOS 15 build, packaged installation, and public asset installation. |
 
 The [CI](../.github/workflows/ci.yml) and
 [release workflow](../.github/workflows/release.yml) require both native Mac

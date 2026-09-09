@@ -49,7 +49,7 @@ jobs:
         run: ./scripts/check-release-refs.sh
       - run: SOULMATE_BUILD_COMMIT="$GITHUB_SHA" cargo build --release --locked
       - name: Single-binary smoke without language toolchains
-        run: ./scripts/onboarding-smoke.sh "$GITHUB_WORKSPACE/target/release/soulmate"
+        run: ./scripts/onboarding-smoke.sh "$GITHUB_WORKSPACE/target/release/soulmate" "$GITHUB_WORKSPACE/skills/soulmate/SKILL.md"
       - name: Package Linux release candidate
         run: ./scripts/package-release.sh x86_64-unknown-linux-gnu target/release/soulmate dist
       - name: Exercise packaged Linux installer

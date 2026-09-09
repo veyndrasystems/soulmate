@@ -62,7 +62,7 @@ jobs:
           SOULMATE_BUILD_COMMIT: ${{ github.sha }}
         run: cargo build --release --locked
       - name: Exercise first-user path without language toolchains
-        run: ./scripts/onboarding-smoke.sh "$GITHUB_WORKSPACE/target/release/soulmate"
+        run: ./scripts/onboarding-smoke.sh "$GITHUB_WORKSPACE/target/release/soulmate" "$GITHUB_WORKSPACE/skills/soulmate/SKILL.md"
       - name: Verify tag matches the binary
         run: test "v$(target/release/soulmate version)" = "$GITHUB_REF_NAME"
       - name: Package native Linux release candidate

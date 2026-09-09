@@ -102,5 +102,5 @@ case "$(cat "$global_state")" in
   *) fail 'invalid global installation state' ;;
 esac
 
-"$script_dir/onboarding-smoke.sh" "$installed" >/dev/null
+"$script_dir/onboarding-smoke.sh" "$installed" "$repo_root/skills/soulmate/SKILL.md" >/dev/null
 printf '%s\n' "published installer smoke passed target=$target version=$expected_version"
