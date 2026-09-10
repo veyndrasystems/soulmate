@@ -24,7 +24,7 @@ The first experiment needs no account, API key, model, project configuration,
 or language runtime. Your real work continues in your existing agent host.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.14.0-rc.1/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.14.0-rc.2/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 

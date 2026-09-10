@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0-rc.2
+
+- Add a disposable behavioral-evaluation rubric that records observable probe and mutation ordering without claiming agent behavior or product benefit.
+
 ## 0.14.0-rc.1
 
 - Add target-bound readiness guidance before materially costly dependent work or cutover while safe independent work continues.
