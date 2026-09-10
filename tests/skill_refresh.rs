@@ -89,6 +89,14 @@ fn attended_work_uses_native_spawn_without_away_fallback() {
             "`soulmate away` remains reserved for an explicit operator-away/disconnect handoff"
         ));
         assert!(skill.contains("soulmate away start AGENT LEDGER"));
+        assert!(skill.contains(
+            "Before `run start`, the coordinating root must select a fresh, unambiguous ledger path beneath configured StateRoot"
+        ));
+        assert!(skill.contains("never use a basename-only ProductRoot path"));
+        assert!(skill
+            .contains("Retain and reuse that exact path through status, recovery, and reporting"));
+        assert!(skill
+            .contains("do not ask the human to transport or decide routine ledger bookkeeping"));
     }
 
     for document in [AWAY_GUIDE, REFERENCE] {
@@ -304,6 +312,10 @@ fn reality_and_decision_guidance_is_embedded_and_distributed() {
         "reopening condition",
         "does not require initialization, a ledger, extra agents, durable memory, or a governed run",
         "ordinary single-agent work proceeds directly",
+        "a standing project preference makes soulmate available for eligible work",
+        "does not govern every task",
+        "independent review, resumability, or deterministic handoff is actually needed",
+        "routine small, reversible edits stay direct",
         "exact run, attempt, artifact, and context",
         "may coexist across different findings",
         "unavailable observation remains unverified",

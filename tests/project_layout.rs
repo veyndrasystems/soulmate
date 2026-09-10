@@ -103,7 +103,7 @@ fn local_mode_separates_control_product_state_and_preserves_git_status() {
     assert!(initialized_text.contains(control.join("soulmate.json").to_str().unwrap()));
     assert!(
         initialized_text
-            .find("Ask your existing coding agent")
+            .find("Bounded setup facts for your existing root agent")
             .unwrap()
             < initialized_text.find("CLI reference").unwrap()
     );
@@ -512,5 +512,103 @@ fn empty_starter_is_valid_but_warns_before_project_scoped_work() {
     );
     assert!(refreshed.status.success(), "{}", output_text(&refreshed));
     assert!(!output_text(&refreshed).contains("empty starter boundary"));
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn migrations_preserve_local_mode_and_historical_ledger_bytes() {
+    let base = temp("local-migration-invariants");
+    let product = base.join("product");
+    let control = base.join("control");
+    let state = base.join("state");
+    let bindings = base.join("bindings");
+    for path in [&product, &control, &state, &bindings] {
+        fs::create_dir(path).unwrap();
+    }
+    let initialized = invoke(
+        &[
+            "init",
+            "--mode",
+            "local",
+            "--project-id",
+            "migration_invariants",
+            "--root",
+            product.to_str().unwrap(),
+            "--control-root",
+            control.to_str().unwrap(),
+            "--state-root",
+            state.to_str().unwrap(),
+        ],
+        &bindings,
+    );
+    assert!(
+        initialized.status.success(),
+        "{}",
+        output_text(&initialized)
+    );
+    let config = control.join("soulmate.json");
+    let historical = b"historical ledger bytes must remain in place\n";
+    let ledger = state.join(".soulmate/runs/resumable.jsonl");
+    fs::write(&ledger, historical).unwrap();
+
+    let canonical_profile = control.join("soulmate/agents/worker.md");
+    let legacy_profile = control.join(".agents/profiles/worker.md");
+    fs::create_dir_all(legacy_profile.parent().unwrap()).unwrap();
+    fs::rename(canonical_profile, legacy_profile).unwrap();
+    let mut config_value: Value =
+        serde_json::from_str(&fs::read_to_string(&config).unwrap()).unwrap();
+    config_value["agents"]["worker"]["profile"] = json!(".agents/profiles/worker.md");
+    fs::write(
+        &config,
+        format!("{}\n", serde_json::to_string_pretty(&config_value).unwrap()),
+    )
+    .unwrap();
+    let layout = invoke(
+        &[
+            "migrate",
+            "layout",
+            "--apply",
+            "--config",
+            config.to_str().unwrap(),
+        ],
+        &bindings,
+    );
+    assert!(layout.status.success(), "{}", output_text(&layout));
+    let after_layout: Value = serde_json::from_str(&fs::read_to_string(&config).unwrap()).unwrap();
+    assert_eq!(after_layout["project"]["mode"], "local");
+    assert_eq!(fs::read(&ledger).unwrap(), historical);
+
+    for path in [
+        "soulmate/boundaries",
+        "soulmate/policies",
+        "soulmate/harness",
+        ".soulmate/memory",
+        ".soulmate/artifacts",
+        ".soulmate/receipts",
+        ".soulmate/away",
+        ".soulmate/locks",
+    ] {
+        fs::remove_dir(control.join(path))
+            .or_else(|_| fs::remove_dir(state.join(path)))
+            .unwrap();
+    }
+    let manifest = control.join("harness-manifest.json");
+    fs::write(&manifest, b"legacy manifest bytes\n").unwrap();
+    let paths = invoke(
+        &[
+            "migrate",
+            "paths",
+            "--apply",
+            "--config",
+            config.to_str().unwrap(),
+        ],
+        &bindings,
+    );
+    assert!(paths.status.success(), "{}", output_text(&paths));
+    let after_paths: Value = serde_json::from_str(&fs::read_to_string(&config).unwrap()).unwrap();
+    assert_eq!(after_paths["project"]["mode"], "local");
+    assert_eq!(fs::read(&ledger).unwrap(), historical);
+    assert_eq!(fs::read(&manifest).unwrap(), b"legacy manifest bytes\n");
+    assert!(!product.join(".soulmate").exists());
     fs::remove_dir_all(base).unwrap();
 }

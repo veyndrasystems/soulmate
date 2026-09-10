@@ -40,7 +40,7 @@ fn run_readme(command: &str, root: &Path, bin: &Path, temporary: &Path) -> Strin
 }
 
 #[test]
-fn literal_readme_proof_precedes_setup_and_works_inside_git_without_touching_it() {
+fn conversation_first_readme_keeps_setup_and_proof_safe_inside_git() {
     let base = support::temp("first-impression");
     let project = base.join("project with spaces");
     let bin = base.join("bin");
@@ -69,12 +69,39 @@ fn literal_readme_proof_precedes_setup_and_works_inside_git_without_touching_it(
     let proof = readme_command("soulmate benchmark");
     let init = readme_command("soulmate init ");
     let readme = include_str!("../README.md");
-    assert!(readme.find(&proof).unwrap() < readme.find(&init).unwrap());
+    assert!(readme
+        .starts_with("# Soulmate\n\nIt verifies what you asked an agent to do and what came back, in the same record."));
+    let conversation_start = readme.find("## Start with your existing agent\n").unwrap();
+    let conversation_end = readme[conversation_start + 1..]
+        .find("\n## ")
+        .map(|offset| conversation_start + 1 + offset)
+        .unwrap();
+    let conversation = &readme[conversation_start..conversation_end];
+    assert!(conversation.contains("existing Codex or Claude lead"));
+    assert!(conversation.contains("ordinary\nlanguage"));
+    assert!(conversation.contains("Ordinary reversible work stays direct"));
+    assert!(conversation.contains("silence is never approval"));
+    assert!(conversation.contains("After approval, manage the"));
+    assert!(conversation.contains("Ask before either installation or a host-permission change."));
+    let post_setup_marker = "After setup, a normal-language request can remain simple:\n\n";
+    let post_setup_start = conversation.find(post_setup_marker).unwrap() + post_setup_marker.len();
+    let post_setup_end = conversation[post_setup_start..]
+        .find("\n\n")
+        .map(|offset| post_setup_start + offset)
+        .unwrap();
+    let post_setup_prompt = &conversation[post_setup_start..post_setup_end];
+    assert!(post_setup_prompt.starts_with("> Please update the theme, run the existing checks"));
+    assert!(post_setup_prompt.contains("what still needs doing"));
+    assert!(!post_setup_prompt.contains("Soulmate"));
+    assert!(readme.contains("current preview, `v0.14.0-rc.4`"));
+    assert!(readme.contains("stable release documentation"));
+    assert!(readme.contains("349b662574b29a2b0366f53aac12d97f268bc84c"));
+    assert!(readme.contains("Stable release"));
     let boundary = readme.find("Before installing or using it:").unwrap();
     let install = readme
         .find("curl -fsSL https://raw.githubusercontent.com/")
         .unwrap();
-    assert!(boundary < install);
+    assert!(conversation_start < boundary && boundary < install);
     assert!(readme
         .contains("The default benchmark removes its temporary project and records after showing"));
     assert!(readme.contains("A real running task may leave a pending review or"));
@@ -115,7 +142,8 @@ fn literal_readme_proof_precedes_setup_and_works_inside_git_without_touching_it(
     assert!(skill.is_file());
     assert!(output.contains(skill.to_str().unwrap()));
     assert!(output.contains(config.to_str().unwrap()));
-    assert!(output.contains("TASK") && output.contains("TEST_COMMAND"));
+    assert!(output.contains("Bounded setup facts for your existing root agent"));
+    assert!(!output.contains("Replace TASK"));
     assert!(output.contains("Setup does not start agents or grant host permissions."));
     assert_eq!(
         fs::read(project.join("work.txt")).unwrap(),

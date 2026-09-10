@@ -13,6 +13,10 @@ Use Soulmate only when the user or project asks for Soulmate, multi-agent
 delegation/review, resumability, or deterministic handoff evidence. Ordinary
 single-agent work proceeds directly. Soulmate launches no model, provider,
 subagent, scheduler, or arbitrary command.
+A standing project preference makes Soulmate available for eligible work, but
+does not govern every task. Use the governed path only when independent review,
+resumability, or deterministic handoff is actually needed; routine small,
+reversible edits stay direct.
 
 ## Answer the user's work question
 
@@ -139,7 +143,12 @@ pending assignment to the existing lead or operator without starting a
 substitute executor. Do not repeat a diagnostic brief, use shell `codex exec`
 or `soulmate away`, rename the task, impersonate a role, or add a new
 permission. This is host guidance; Soulmate does not detect or mechanically
-enforce this preflight. Default one-worker checked run:
+enforce this preflight. Before `run start`, the coordinating root must select a
+fresh, unambiguous ledger path beneath configured StateRoot (portable example
+`.soulmate/runs/<task>.jsonl`); never use a basename-only ProductRoot path.
+Retain and reuse that exact path through status, recovery, and reporting; do
+not ask the human to transport or decide routine ledger bookkeeping. Default
+one-worker checked run:
 
 1. Init if needed; run `soulmate check --json --config CONFIG`.
 2. Freeze exact authorized check; pass it with goal/ledger/config to `run start`.

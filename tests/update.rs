@@ -13,13 +13,13 @@ fn fake_curl(root: &Path) {
 out=""
 for arg in "$@"; do out="$arg"; done
 case "$*" in
-  *releases*) if [ "$FAKE_BAD" = "1" ]; then printf '%s' '{}' > "$out"; else printf '%s' '[{"tag_name":"v0.14.0-rc.4","draft":false,"prerelease":true}]' > "$out"; fi ;;
+  *releases*) if [ "$FAKE_BAD" = "1" ]; then printf '%s' '{}' > "$out"; else printf '%s' '[{"tag_name":"v0.14.0-rc.5","draft":false,"prerelease":true}]' > "$out"; fi ;;
   *) printf '%s' '#!/bin/sh
 target="$SOULMATE_INSTALL_PREFIX/soulmate"
 test -f "$target"
 if [ "$FAKE_INSTALL_FAIL" = "1" ]; then exit 9; fi
 if [ "$FAKE_INSTALL_DIRECTORY" = "1" ]; then rm -f "$target"; mkdir "$target"; exit 0; fi
-version=0.14.0-rc.4
+version=0.14.0-rc.5
 if [ "$FAKE_INSTALL_WRONG" = "1" ]; then version=0.14.0-rc.9; fi
 printf "%s\n" "#!/bin/sh" "if [ \"\$1\" = version ]; then echo $version; fi" > "$target"
 chmod 755 "$target"' > "$out" ;;
@@ -63,7 +63,7 @@ fn explicit_update_uses_fixed_fake_release_and_restores_on_failure() {
     let installed = Command::new(&target).arg("version").output().unwrap();
     assert_eq!(
         String::from_utf8_lossy(&installed.stdout).trim(),
-        "0.14.0-rc.4"
+        "0.14.0-rc.5"
     );
 
     binary(&target, "0.14.0-rc.1");

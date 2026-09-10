@@ -13,8 +13,41 @@ refused. After rework, a fresh checked and reviewed attempt is accepted; the
 earlier attempt remains available.
 
 [![Rust primary CI](https://github.com/veyndrasystems/soulmate/actions/workflows/ci.yml/badge.svg)](https://github.com/veyndrasystems/soulmate/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/veyndrasystems/soulmate)](https://github.com/veyndrasystems/soulmate/releases/latest)
+[![Stable release](https://img.shields.io/github/v/release/veyndrasystems/soulmate)](https://github.com/veyndrasystems/soulmate/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+## Start with your existing agent
+
+Keep using your existing Codex or Claude lead. Describe the work in ordinary
+language in that same root conversation; when a reviewed project preference
+calls for it, the lead can handle authorized Soulmate setup, selection, records,
+checks, recovery, and a concise report. Ordinary reversible work stays direct.
+You own the intended outcome, meaningful preferences, permissions, and genuine
+decisions; conversational silence is never approval.
+
+Before that request, note the boundary: the current preview installer writes
+one executable under `$HOME/.local/bin` and setup writes reviewable project
+configuration and skill copies. Your existing host owns execution and
+permissions. Ask before either installation or a host-permission change.
+
+Illustrative setup request to your existing lead:
+
+> Inspect the current installation and host capabilities. Ask me before
+> installing Soulmate or changing permissions. If I approve, prepare the
+> project's reviewed setup and use it selectively for this task when a bounded
+> handoff or inspectable check is appropriate. After approval, manage the
+> authorized commands and records yourself in this conversation. Keep ordinary
+> reversible work direct and tell me what still needs doing before I accept it.
+
+After setup, a normal-language request can remain simple:
+
+> Please update the theme, run the existing checks, and tell me what changed
+> and what still needs doing.
+
+This page describes the current preview, `v0.14.0-rc.4`. If you need the
+stable 0.12.0 channel, use the [stable release documentation](https://github.com/veyndrasystems/soulmate/tree/349b662574b29a2b0366f53aac12d97f268bc84c)
+and matching commands instead. Preview and stable binaries remain separate
+channels.
 
 ## Install and see the result
 
@@ -31,7 +64,7 @@ be on `PATH` for Git-worktree use; and `init` writes reviewable config/skills
 while refusing unsafe conflicts.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.14.0-rc.3/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.14.0-rc.4/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
@@ -83,7 +116,7 @@ unresolved even when the worker says “completed” and the reviewer says
 “approved.” Rework preserves earlier results; a passing report still needs
 review and a lead decision.
 
-## Use it for your next change
+## Manual setup and CLI path
 
 In your project directory, initialize portable setup. This writes reviewable
 configuration and profiles to `soulmate.json` and `soulmate/`, private ignored
@@ -94,11 +127,12 @@ If setup must stay outside your checkout, use [local mode](REFERENCE.md#reposito
 soulmate init --mode portable --root .
 ```
 
-Initialization prints a handoff with the actual configuration and skill paths.
-Give it to your existing coding agent, replacing the task and test command:
+Initialization prints the actual configuration and skill paths plus bounded
+setup facts for your existing lead. In that same conversation, say:
 
-> Use Soulmate for **this change**. Check it with **my existing test command**.
-> Handle the records and tell me what still needs doing before I can accept it.
+> Use Soulmate for this change when its reviewed project preference says it is
+> appropriate. Check it with my existing test command, keep ordinary reversible
+> work direct, and tell me what still needs doing before I can accept it.
 
 Review the declared scope, native agent mapping, and host permissions once.
 Your host supplies models and execution; setup does not start agents or grant

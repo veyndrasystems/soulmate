@@ -1,7 +1,7 @@
 {
   "name": "soulmate",
-  "version": "0.14.0-rc.3",
-  "description": "It verifies what you asked an agent to do and what came back, in the same record. Use it with a configured project; plugin installation provides host guidance and does not install the separate soulmate CLI.",
+  "version": "0.14.0-rc.4",
+  "description": "It verifies what you asked an agent to do and what came back, in the same record. Use it as an opt-in, bounded project guidance surface; ordinary work remains unchanged. Plugin installation provides host guidance and does not install the separate soulmate CLI.",
   "author": { "name": "Veyndra Systems", "url": "https://github.com/veyndrasystems" },
   "repository": "https://github.com/veyndrasystems/soulmate",
   "license": "MIT",
@@ -11,7 +11,7 @@
   "interface": {
     "displayName": "Soulmate",
     "shortDescription": "Bounded, inspectable agent handoffs",
-    "longDescription": "It verifies what you asked an agent to do and what came back, in the same record. Use it with a configured project; plugin installation provides host guidance and does not install the separate soulmate CLI.",
+    "longDescription": "It verifies what you asked an agent to do and what came back, in the same record. Use it as an opt-in, bounded project guidance surface; ordinary work remains unchanged. Plugin installation provides host guidance and does not install the separate soulmate CLI.",
     "developerName": "Veyndra Systems",
     "category": "Productivity",
     "capabilities": ["Read"],

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.0-rc.4
+
+- Lead with the existing host conversation, selective project preferences, and direct ordinary work while keeping setup and protocol boundaries explicit.
+- Add fresh StateRoot ledger-path guidance and document current observe-path and migration-mode limits with focused regression coverage.
+
 ## 0.14.0-rc.3
 
 - Clarify empty starter boundaries, update rollback diagnostics, and align the benchmark and setup guidance with their observable behavior.

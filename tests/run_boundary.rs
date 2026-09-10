@@ -239,6 +239,44 @@ fn invalid_or_widening_boundaries_never_create_a_ledger() {
 }
 
 #[test]
+fn missing_later_stage_observe_path_refuses_before_ledger_creation() {
+    let (root, config) = fixture();
+    write_manifest(
+        &root,
+        json!({
+            "version": 1,
+            "agents": {
+                "worker": {
+                    "observe": ["src/later-stage.rs"],
+                    "write": []
+                }
+            }
+        }),
+    );
+    let ledger = ".soulmate/missing-later-stage.jsonl";
+    let refused = invoke(
+        &root,
+        &[
+            "run",
+            "start",
+            "change",
+            "--goal",
+            "future observe path",
+            "--ledger",
+            ledger,
+            "--boundary",
+            ".agents/boundaries/task.json",
+            "--config",
+            config.to_str().unwrap(),
+        ],
+    );
+    assert!(!refused.status.success());
+    assert!(text(&refused).contains("observe path does not exist: src/later-stage.rs"));
+    assert!(!root.join(ledger).exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn parallel_workers_keep_their_independent_exact_boundaries() {
     let (root, config_path) = fixture();
     let mut config: Value =

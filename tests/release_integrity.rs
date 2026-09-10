@@ -223,7 +223,7 @@ fn absent_or_drifted_required_version_values_are_rejected() {
 fn plugin_manifests_keep_portable_openai_and_compatibility_presentation() {
     let first_sentence =
         "It verifies what you asked an agent to do and what came back, in the same record.";
-    let cli_boundary = "Use it with a configured project; plugin installation provides host guidance and does not install the separate soulmate CLI.";
+    let cli_boundary = "Use it as an opt-in, bounded project guidance surface; ordinary work remains unchanged. Plugin installation provides host guidance and does not install the separate soulmate CLI.";
     let presentation = format!("{first_sentence} {cli_boundary}");
     let root: Value = serde_json::from_str(include_str!("../plugin.json")).unwrap();
     let codex: Value = serde_json::from_str(include_str!(
