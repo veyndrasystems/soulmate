@@ -83,7 +83,7 @@ original host transcript.
 | Reviewed | Reviewer outcome in the current attempt | A reviewer recorded its decision in the workflow. |
 | Accepted | Configured lead's final `accepted` submission | The run's canonical authority recorded acceptance after the enabled guards passed. |
 
-New v4 source work can locally observe the frozen command or consume a caller
+The v4 preview can locally observe the frozen command or consume a caller
 report; v3 `run record-check` is caller-reported-only and never runs the command.
 Neither the producer field nor a SHA-256 authenticates a caller or proves that a
 reported command actually executed. The synthetic harness
@@ -124,7 +124,7 @@ participants provide those observations.
 ## Compatibility and broader claims
 
 Historical checked runs use run-event version 3 and are reported-only;
-unreleased source work adds v4 observed-or-reported results. Existing v1/v2 ledgers keep their previous
+the `v0.15.0-rc.1` preview adds v4 observed-or-reported results. Existing v1/v2 ledgers keep their previous
 format and remain inspectable. Old binaries do not gain v3 support by
 changing the package number; retain a compatible binary for v3 evidence and do
 not rewrite a v3 ledger as an older format. Public schema snapshots and frozen

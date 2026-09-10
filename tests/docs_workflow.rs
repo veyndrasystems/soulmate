@@ -89,7 +89,7 @@ fn heading_gate_distinguishes_fenced_examples_and_removed_destinations() {
 }
 
 #[test]
-fn checked_result_docs_keep_v3_v4_and_rc4_boundaries_consistent() {
+fn checked_result_docs_keep_v3_v4_and_rc1_boundaries_consistent() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let read = |file: &str| fs::read_to_string(root.join(file)).unwrap();
     let readme = read("README.md");
@@ -100,24 +100,22 @@ fn checked_result_docs_keep_v3_v4_and_rc4_boundaries_consistent() {
     let glossary = read("docs/glossary.md");
     let cli = read("src/cli.rs");
     for document in [&readme, &reference, &security] {
-        assert!(document.contains("v0.14.0-rc.4"));
-        assert!(document.contains("unreleased"));
+        assert!(document.contains("v0.15.0-rc.1"));
+        assert!(!document.contains("unreleased v4"));
     }
     assert!(readme.contains(
         "v3 supports caller-reported `record-check` only; v4 supports both reported `record-check` and observed `observe-check`"
     ));
-    assert!(readme.contains("lacks only the unreleased v4/`observe-check`"));
-    assert!(readme.contains(
-        "published `v0.14.0-rc.4` installer creates v3 checked ledgers; only the\nunreleased source work creates v4 checked ledgers"
-    ));
+    assert!(readme.contains("current `v0.15.0-rc.1` preview creates v4 checked ledgers"));
+    assert!(readme.contains("retaining readable v3 ledgers"));
     assert!(reference.contains("Historical checked runs use run-event version 3"));
     assert!(security.contains("v3 supports caller-reported `run record-check` only"));
     assert!(security
         .contains("supports both reported `run record-check` and local `run observe-check`"));
-    assert!(security.contains("lacks only the v4/`observe-check` source"));
+    assert!(security.contains("`v0.15.0-rc.1`\npreview supports both reported"));
     assert!(first.contains("historical v3 procedure"));
     assert!(methodology.contains("v3 `run record-check` is caller-reported-only"));
-    assert!(methodology.contains("unreleased source work adds v4 observed-or-reported"));
+    assert!(methodology.contains("`v0.15.0-rc.1` preview adds v4 observed-or-reported"));
     assert!(
         glossary.contains("only check route in v3")
             && glossary.contains("one permitted route in v4")

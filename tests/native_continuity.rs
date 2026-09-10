@@ -207,7 +207,7 @@ fn session_update_context_is_fresh_cache_bound_and_subagent_silent() {
     fs::write(
         cache.join("update.json"),
         format!(
-            "{{\"checked_at\":{},\"channel\":\"all\",\"latest\":\"v0.14.0-rc.5\"}}",
+            "{{\"checked_at\":{},\"channel\":\"all\",\"latest\":\"v0.15.0-rc.2\"}}",
             chrono::Utc::now().timestamp()
         ),
     )
@@ -316,7 +316,7 @@ fn stale_session_cache_refreshes_with_local_fake_curl() {
     fs::write(
         &curl,
         format!(
-            "#!/bin/sh\nprintf x >> '{}'\nout=\"\"; for arg in \"$@\"; do out=\"$arg\"; done\nprintf '%s' '[{{\"tag_name\":\"v0.14.0-rc.5\",\"draft\":false,\"prerelease\":true}}]' > \"$out\"\n",
+            "#!/bin/sh\nprintf x >> '{}'\nout=\"\"; for arg in \"$@\"; do out=\"$arg\"; done\nprintf '%s' '[{{\"tag_name\":\"v0.15.0-rc.2\",\"draft\":false,\"prerelease\":true}}]' > \"$out\"\n",
             calls.display()
         ),
     )

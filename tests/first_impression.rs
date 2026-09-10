@@ -79,10 +79,17 @@ fn conversation_first_readme_keeps_setup_and_proof_safe_inside_git() {
     let conversation = &readme[conversation_start..conversation_end];
     assert!(conversation.contains("existing Codex or Claude lead"));
     assert!(conversation.contains("ordinary\nlanguage"));
+    assert!(conversation.contains("https://github.com/veyndrasystems/soulmate"));
+    assert!(conversation.contains("Inspect first"));
     assert!(conversation.contains("Ordinary reversible work stays direct"));
     assert!(conversation.contains("silence is never approval"));
-    assert!(conversation.contains("After approval, manage the"));
-    assert!(conversation.contains("Ask before either installation or a host-permission change."));
+    assert!(conversation.contains("After approval, the lead manages"));
+    assert!(conversation.contains("Ask before either installation or a host-permission change"));
+    assert!(conversation.contains("Unless the project already requires a non-prerelease channel"));
+    assert!(conversation.contains("pinned current `v0.15.0-rc.1` preview"));
+    assert!(conversation.contains("prerelease in the"));
+    assert!(conversation.contains("human does not need to choose a channel first"));
+    assert!(conversation.contains("`0.12.0` remains opt-in when that requirement is stated"));
     let post_setup_marker = "After setup, a normal-language request can remain simple:\n\n";
     let post_setup_start = conversation.find(post_setup_marker).unwrap() + post_setup_marker.len();
     let post_setup_end = conversation[post_setup_start..]
@@ -93,36 +100,48 @@ fn conversation_first_readme_keeps_setup_and_proof_safe_inside_git() {
     assert!(post_setup_prompt.starts_with("> Please update the theme, run the existing checks"));
     assert!(post_setup_prompt.contains("what still needs doing"));
     assert!(!post_setup_prompt.contains("Soulmate"));
-    assert!(readme.contains("current preview, `v0.14.0-rc.4`"));
+    assert!(readme.contains("current preview, `v0.15.0-rc.1`"));
     assert!(readme.contains("stable release documentation"));
     assert!(readme.contains("349b662574b29a2b0366f53aac12d97f268bc84c"));
     assert!(readme.contains("Stable release"));
-    let boundary = readme.find("Before installing or using it:").unwrap();
+    let boundary = readme
+        .find("Before installing or using it, review the pinned command")
+        .unwrap();
     let install = readme
         .find("curl -fsSL https://raw.githubusercontent.com/")
         .unwrap();
-    assert!(conversation_start < boundary && boundary < install);
-    assert!(readme
-        .contains("The default benchmark removes its temporary project and records after showing"));
+    let channel = readme
+        .find("Unless the project already requires a non-prerelease channel")
+        .unwrap();
+    let prompt = readme
+        .find("> Set up Soulmate for this project from https://github.com/veyndrasystems/soulmate")
+        .unwrap();
+    assert!(
+        conversation_start < channel && channel < prompt && prompt < boundary && boundary < install
+    );
+    let provenance = readme
+        .find("When pre-install repository provenance is required")
+        .unwrap();
+    assert!(readme.contains("documented GitHub attestation verification"));
+    assert!(boundary < provenance && provenance < install);
+    assert!(readme.contains("removes the temporary project and records by default"));
     assert!(readme.contains("A real running task may leave a pending review or"));
     assert!(readme.contains("assignment for your existing host"));
     assert!(!readme.contains("that pending review"));
     let output = run_readme(&proof, &project, &bin, &temporary);
     assert!(output.contains("False-completion proof passed (14/14 assertions)."));
-    for line in readme
+    let outcome = readme
         .split("```text\n")
         .nth(1)
         .unwrap()
         .split("```")
         .next()
-        .unwrap()
-        .lines()
-    {
-        assert!(
-            output.lines().any(|actual| actual == line),
-            "README outcome absent: {line}"
-        );
-    }
+        .unwrap();
+    assert!(outcome.contains("Attempt 1 failed its current check"));
+    assert!(outcome.contains("Rework preserved that attempt"));
+    assert!(output.contains("protocol refusal recorded (not a lead rejection)."));
+    assert!(output.contains("Rework: preserved the previous attempt for the next assignment."));
+    assert!(output.contains("A passing check alone did not accept the run."));
     assert_eq!(git_status(), before);
     assert_eq!(
         fs::read(project.join("work.txt")).unwrap(),

@@ -1,12 +1,14 @@
 # Changelog
 
-## Unreleased (0.15.0)
+## 0.15.0-rc.1
 
 - Add checked run-event format 4 and `run observe-check`, which records a
   locally observed frozen command with separate acquisition and exit/signal
   result evidence while retaining v3 caller-reported ledgers.
 - Reject replayed check events after terminal run state and clarify that update
   and skill diagnostics do not establish host-cache or active-session reload.
+- Lead the public README with conversation-first, URL-first setup while keeping
+  selective governed work, prerelease consent, and direct simple work explicit.
 
 ## 0.14.0-rc.4
 
