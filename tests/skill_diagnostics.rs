@@ -79,7 +79,7 @@ fn local_project(label: &str) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
 }
 
 fn expected_json() -> String {
-    "{\"mode\":\"local\",\"projectId\":\"skill_diagnostics_fixture\",\"valid\":true,\"warnings\":[]}\n".into()
+    "{\"mode\":\"local\",\"projectId\":\"skill_diagnostics_fixture\",\"valid\":true,\"warnings\":[{\"classification\":\"empty_starter_boundary\",\"detail\":\"empty starter boundary: review observe, write, and commands before tasks needing project files or commands; empty declarations do not grant host permission or establish task readiness\"}]}\n".into()
 }
 
 #[cfg(unix)]

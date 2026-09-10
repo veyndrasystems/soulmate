@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde_json::{json, Value};
 mod support;
 use std::{
     fs,
@@ -440,5 +440,77 @@ fn git_marker_without_git_fails_with_the_missing_dependency() {
     assert!(output_text(&output).contains("Git executable not found on PATH"));
     assert!(!root.join("soulmate.json").exists());
 
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn empty_starter_is_valid_but_warns_before_project_scoped_work() {
+    let base = temp("empty-starter-warning");
+    let root = base.join("project");
+    let bindings = base.join("bindings");
+    fs::create_dir(&root).unwrap();
+    fs::create_dir(&bindings).unwrap();
+
+    let initialized = invoke(&["init", "--root", root.to_str().unwrap()], &bindings);
+    assert!(
+        initialized.status.success(),
+        "{}",
+        output_text(&initialized)
+    );
+    let init_text = output_text(&initialized);
+    assert!(init_text.contains("empty starter boundary"));
+    assert!(init_text.contains("project files or commands"));
+
+    let config = root.join("soulmate.json");
+    let checked = invoke(
+        &["check", "--json", "--config", config.to_str().unwrap()],
+        &bindings,
+    );
+    assert!(checked.status.success(), "{}", output_text(&checked));
+    let value: Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(value["valid"], true);
+    let warning = value["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|warning| warning["classification"] == "empty_starter_boundary")
+        .expect("empty starter warning classification");
+    assert!(warning["detail"]
+        .as_str()
+        .unwrap()
+        .contains("project files"));
+
+    let human = invoke(&["check", "--config", config.to_str().unwrap()], &bindings);
+    assert!(human.status.success(), "{}", output_text(&human));
+    let human_text = output_text(&human);
+    let warning_line = "warning: empty starter boundary: review observe, write, and commands before tasks needing project files or commands; empty declarations do not grant host permission or establish task readiness";
+    assert!(human_text.lines().any(|line| line == warning_line));
+    assert!(!human_text.contains("warning: \"empty starter boundary"));
+
+    let mut configured: Value =
+        serde_json::from_str(&fs::read_to_string(&config).unwrap()).unwrap();
+    configured["agents"]["worker"]["observe"] = json!(["src"]);
+    fs::write(
+        &config,
+        format!("{}\n", serde_json::to_string_pretty(&configured).unwrap()),
+    )
+    .unwrap();
+    let nonempty = invoke(
+        &["check", "--json", "--config", config.to_str().unwrap()],
+        &bindings,
+    );
+    assert!(nonempty.status.success(), "{}", output_text(&nonempty));
+    let nonempty: Value = serde_json::from_slice(&nonempty.stdout).unwrap();
+    assert!(!nonempty["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|warning| warning["classification"] == "empty_starter_boundary"));
+    let refreshed = invoke(
+        &["init", "--refresh-skills", "--root", root.to_str().unwrap()],
+        &bindings,
+    );
+    assert!(refreshed.status.success(), "{}", output_text(&refreshed));
+    assert!(!output_text(&refreshed).contains("empty starter boundary"));
     fs::remove_dir_all(base).unwrap();
 }

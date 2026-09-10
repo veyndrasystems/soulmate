@@ -70,6 +70,16 @@ fn literal_readme_proof_precedes_setup_and_works_inside_git_without_touching_it(
     let init = readme_command("soulmate init ");
     let readme = include_str!("../README.md");
     assert!(readme.find(&proof).unwrap() < readme.find(&init).unwrap());
+    let boundary = readme.find("Before installing or using it:").unwrap();
+    let install = readme
+        .find("curl -fsSL https://raw.githubusercontent.com/")
+        .unwrap();
+    assert!(boundary < install);
+    assert!(readme
+        .contains("The default benchmark removes its temporary project and records after showing"));
+    assert!(readme.contains("A real running task may leave a pending review or"));
+    assert!(readme.contains("assignment for your existing host"));
+    assert!(!readme.contains("that pending review"));
     let output = run_readme(&proof, &project, &bin, &temporary);
     assert!(output.contains("False-completion proof passed (14/14 assertions)."));
     for line in readme

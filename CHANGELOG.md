@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0-rc.3
+
+- Clarify empty starter boundaries, update rollback diagnostics, and align the benchmark and setup guidance with their observable behavior.
+
 ## 0.14.0-rc.2
 
 - Add a disposable behavioral-evaluation rubric that records observable probe and mutation ordering without claiming agent behavior or product benefit.

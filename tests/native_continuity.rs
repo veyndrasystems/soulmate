@@ -207,7 +207,7 @@ fn session_update_context_is_fresh_cache_bound_and_subagent_silent() {
     fs::write(
         cache.join("update.json"),
         format!(
-            "{{\"checked_at\":{},\"channel\":\"all\",\"latest\":\"v0.14.0-rc.3\"}}",
+            "{{\"checked_at\":{},\"channel\":\"all\",\"latest\":\"v0.14.0-rc.4\"}}",
             chrono::Utc::now().timestamp()
         ),
     )
@@ -276,7 +276,7 @@ fn failed_session_lookup_backs_off_and_opt_out_stays_silent() {
     fs::create_dir_all(&cache).unwrap();
     fs::write(
         cache.join("update.json"),
-        b"{\"checked_at\":0,\"channel\":\"all\",\"latest\":\"v0.14.0-rc.3\"}",
+        b"{\"checked_at\":0,\"channel\":\"all\",\"latest\":\"v0.14.0-rc.4\"}",
     )
     .unwrap();
     let calls = fixture.host.join("failed-curl-calls");
@@ -308,7 +308,7 @@ fn stale_session_cache_refreshes_with_local_fake_curl() {
     fs::create_dir_all(&cache).unwrap();
     fs::write(
         cache.join("update.json"),
-        b"{\"checked_at\":0,\"channel\":\"all\",\"latest\":\"v0.14.0-rc.3\"}",
+        b"{\"checked_at\":0,\"channel\":\"all\",\"latest\":\"v0.14.0-rc.4\"}",
     )
     .unwrap();
     let calls = fixture.host.join("curl-calls");
@@ -316,7 +316,7 @@ fn stale_session_cache_refreshes_with_local_fake_curl() {
     fs::write(
         &curl,
         format!(
-            "#!/bin/sh\nprintf x >> '{}'\nout=\"\"; for arg in \"$@\"; do out=\"$arg\"; done\nprintf '%s' '[{{\"tag_name\":\"v0.14.0-rc.3\",\"draft\":false,\"prerelease\":true}}]' > \"$out\"\n",
+            "#!/bin/sh\nprintf x >> '{}'\nout=\"\"; for arg in \"$@\"; do out=\"$arg\"; done\nprintf '%s' '[{{\"tag_name\":\"v0.14.0-rc.4\",\"draft\":false,\"prerelease\":true}}]' > \"$out\"\n",
             calls.display()
         ),
     )

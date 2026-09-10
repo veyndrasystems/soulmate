@@ -23,8 +23,15 @@ Ubuntu on WSL 2 uses the Linux binary. See the [platform support details](docs/p
 The first experiment needs no account, API key, model, project configuration,
 or language runtime. Your real work continues in your existing agent host.
 
+Before installing or using it: the pinned GitHub release installs one
+executable under `$HOME/.local/bin` by default and verifies its archive
+checksum (a checksum is not independent provenance); the benchmark uses no
+model or network; your existing host owns execution and permissions; Git must
+be on `PATH` for Git-worktree use; and `init` writes reviewable config/skills
+while refusing unsafe conflicts.
+
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.14.0-rc.2/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.14.0-rc.3/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
@@ -63,9 +70,10 @@ This is a scripted configuration-repair task with real command exit codes;
 actors are simulated. It demonstrates the protection, not time saved or agent
 quality. [Inspect the experiment and its limits](docs/value-proof-methodology.md).
 
-Your existing host can retrieve that pending review with the current check
-and earlier attempt evidence. Carrying it out requires the host’s native
-agent tools; if unavailable, the work remains pending. See [host setup](docs/onboarding.md#ask-your-existing-host-to-manage-the-run).
+The default benchmark removes its temporary project and records after showing
+the accepted synthetic run. A real running task may leave a pending review or
+assignment for your existing host to retrieve; carrying it out requires the
+host’s native agent tools. See [host setup](docs/onboarding.md#ask-your-existing-host-to-manage-the-run).
 
 In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.
 

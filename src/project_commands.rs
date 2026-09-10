@@ -4,6 +4,8 @@ use crate::{args, args::Arguments, config, onboarding, project_skills};
 use serde_json::json;
 use std::path::Path;
 
+const EMPTY_STARTER_DETAIL: &str = "empty starter boundary: review observe, write, and commands before tasks needing project files or commands; empty declarations do not grant host permission or establish task readiness";
+
 pub(crate) fn init(arguments: &Arguments) -> Result<(), String> {
     args::assert_options(
         "init",
@@ -55,6 +57,11 @@ pub(crate) fn init(arguments: &Arguments) -> Result<(), String> {
         arguments.options.get("control-root").map(String::as_str),
         arguments.options.get("state-root").map(String::as_str),
     )?;
+    let created = crate::config::load(Some(
+        path.to_str()
+            .ok_or("configuration path is not valid UTF-8")?,
+    ))?;
+    let empty_starter = is_empty_starter(&created.agents);
     let coffee = if arguments.flags.contains_key("with-coffee") {
         " + opt-in Coffee"
     } else {
@@ -74,6 +81,9 @@ pub(crate) fn init(arguments: &Arguments) -> Result<(), String> {
         "Created {}\nPrepared project skills for Codex and Claude: Soulmate{coffee}.\n\nAsk your existing coding agent:\n  Read the generated Soulmate skill at {quoted_skill}. Use configuration {quoted_config}.\n  Review my task scope and native worker/reviewer mapping, then use Soulmate for TASK with the real check command TEST_COMMAND. Handle the records and tell me what still needs doing before acceptance.\nReplace TASK and TEST_COMMAND. Setup does not start agents or grant host permissions.\n\nCLI reference (replace YOUR_TEST_COMMAND with a real project check command):\n  soulmate brief worker --task \"Describe the change you want to make\" --config={quoted_config}\n  soulmate run start change --goal \"Describe the bounded change\" --check-command \"YOUR_TEST_COMMAND\" --ledger .soulmate/runs/run.jsonl --config={quoted_config}\n  soulmate check --config={quoted_config}\nThe host executes the frozen check command and reports its actual result. 'soulmate check' validates configuration, profiles, and declared boundaries; it does not run project tests.",
         path.display()
     );
+    if empty_starter {
+        println!("warning: {EMPTY_STARTER_DETAIL}");
+    }
     Ok(())
 }
 
@@ -134,7 +144,13 @@ pub(crate) fn check(loaded: &config::Loaded, arguments: &Arguments) -> Result<()
     for agent in loaded.agents.values() {
         config::file(&loaded.control_root, &agent.profile)?;
     }
-    let warnings = crate::boundary_manifest::warnings(&loaded.config);
+    let mut warnings = crate::boundary_manifest::warnings(&loaded.config);
+    if is_empty_starter(&loaded.agents) {
+        warnings.push(json!({
+            "classification": "empty_starter_boundary",
+            "detail": EMPTY_STARTER_DETAIL
+        }));
+    }
     let skill_diagnostics = project_skills::diagnose(&loaded.control_root);
     let mode = match loaded.mode {
         crate::project_layout::Mode::Local => "local",
@@ -154,15 +170,33 @@ pub(crate) fn check(loaded: &config::Loaded, arguments: &Arguments) -> Result<()
     } else {
         println!("Soulmate configuration is valid ({mode} mode).");
         for warning in warnings {
-            println!(
-                "warning: agents.{}.{} entry '{}' is descriptive or unsupported for exact run narrowing",
-                warning["agent"], warning["field"], warning["entry"]
-            );
+            if warning["classification"] == "empty_starter_boundary" {
+                println!(
+                    "warning: {}",
+                    warning["detail"]
+                        .as_str()
+                        .unwrap_or("unknown warning detail")
+                );
+            } else {
+                println!(
+                    "warning: agents.{}.{} entry '{}' is descriptive or unsupported for exact run narrowing",
+                    warning["agent"], warning["field"], warning["entry"]
+                );
+            }
         }
         print_skill_diagnostics(&skill_diagnostics);
     }
     print_skill_warnings(&skill_diagnostics, &loaded.control_root);
     Ok(())
+}
+
+fn is_empty_starter(
+    agents: &std::collections::BTreeMap<String, crate::config_types::AgentConfig>,
+) -> bool {
+    !agents.is_empty()
+        && agents.values().all(|agent| {
+            agent.observe.is_empty() && agent.write.is_empty() && agent.commands.is_empty()
+        })
 }
 
 fn print_skill_diagnostics(observations: &[project_skills::SkillObservation]) {

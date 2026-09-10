@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "soulmate",
-  "version": "0.14.0-rc.2",
+  "version": "0.14.0-rc.3",
   "description": "It verifies what you asked an agent to do and what came back, in the same record. Use it with a configured project; plugin installation provides host guidance and does not install the separate soulmate CLI.",
   "author": { "name": "Veyndra Systems", "url": "https://github.com/veyndrasystems" },
   "repository": "https://github.com/veyndrasystems/soulmate",

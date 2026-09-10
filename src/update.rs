@@ -645,7 +645,9 @@ pub fn explicit_update() -> Result<(), String> {
         Err(error) => match restore_backup(&backup, &target) {
             Ok(()) => Err(format!("soulmate update: {error}")),
             Err(rollback) => Err(format!(
-                "soulmate update: {error}; rollback failed: {rollback}; backup retained"
+                "soulmate update: {error}; rollback failed: {rollback}; retained backup '{}' for install target '{}'",
+                backup.display(),
+                target.display()
             )),
         },
     }

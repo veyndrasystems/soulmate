@@ -13,12 +13,13 @@ fn fake_curl(root: &Path) {
 out=""
 for arg in "$@"; do out="$arg"; done
 case "$*" in
-  *releases*) if [ "$FAKE_BAD" = "1" ]; then printf '%s' '{}' > "$out"; else printf '%s' '[{"tag_name":"v0.14.0-rc.3","draft":false,"prerelease":true}]' > "$out"; fi ;;
+  *releases*) if [ "$FAKE_BAD" = "1" ]; then printf '%s' '{}' > "$out"; else printf '%s' '[{"tag_name":"v0.14.0-rc.4","draft":false,"prerelease":true}]' > "$out"; fi ;;
   *) printf '%s' '#!/bin/sh
 target="$SOULMATE_INSTALL_PREFIX/soulmate"
 test -f "$target"
 if [ "$FAKE_INSTALL_FAIL" = "1" ]; then exit 9; fi
-version=0.14.0-rc.3
+if [ "$FAKE_INSTALL_DIRECTORY" = "1" ]; then rm -f "$target"; mkdir "$target"; exit 0; fi
+version=0.14.0-rc.4
 if [ "$FAKE_INSTALL_WRONG" = "1" ]; then version=0.14.0-rc.9; fi
 printf "%s\n" "#!/bin/sh" "if [ \"\$1\" = version ]; then echo $version; fi" > "$target"
 chmod 755 "$target"' > "$out" ;;
@@ -62,7 +63,7 @@ fn explicit_update_uses_fixed_fake_release_and_restores_on_failure() {
     let installed = Command::new(&target).arg("version").output().unwrap();
     assert_eq!(
         String::from_utf8_lossy(&installed.stdout).trim(),
-        "0.14.0-rc.3"
+        "0.14.0-rc.4"
     );
 
     binary(&target, "0.14.0-rc.1");
@@ -107,6 +108,55 @@ fn update_is_discoverable_in_advanced_help() {
         .unwrap();
     assert!(output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("soulmate update"));
+}
+
+#[test]
+fn double_update_failure_names_and_retains_private_backup() {
+    let root = support::temp("update-double-failure");
+    let bin = root.join("bin");
+    let prefix = root.join("prefix");
+    fs::create_dir(&bin).unwrap();
+    fs::create_dir(&prefix).unwrap();
+    fake_curl(&bin);
+    let target = prefix.join("soulmate");
+    binary(&target, "0.14.0-rc.1");
+    let original = fs::read(&target).unwrap();
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let failed = Command::new(env!("CARGO_BIN_EXE_soulmate"))
+        .arg("update")
+        .env("PATH", &path)
+        .env("HOME", &root)
+        .env("SOULMATE_NO_UPDATE_CHECK", "1")
+        .env("SOULMATE_INSTALL_PREFIX", &prefix)
+        .env("FAKE_INSTALL_DIRECTORY", "1")
+        .output()
+        .unwrap();
+    assert!(!failed.status.success());
+
+    let backup = fs::read_dir(&prefix)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(".soulmate-old-"))
+        })
+        .expect("double failure must retain its backup");
+    assert_eq!(fs::read(&backup).unwrap(), original);
+    assert_eq!(
+        fs::metadata(&backup).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let message = format!(
+        "{}{}",
+        String::from_utf8_lossy(&failed.stdout),
+        String::from_utf8_lossy(&failed.stderr)
+    );
+    assert!(message.contains(backup.to_str().unwrap()), "{message}");
+    assert!(message.contains(target.to_str().unwrap()), "{message}");
+    assert!(!message.contains("restore "), "{message}");
+    assert!(target.is_dir());
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
