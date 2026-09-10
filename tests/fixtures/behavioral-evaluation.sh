@@ -7,7 +7,7 @@ fail() {
 }
 
 usage() {
-  fail "usage: $0 ROOT init TARGET RESULT|announce|probe TARGET|mutate TARGET|disposition VALUE|score TARGET RESULT DISPOSITION|soulmate-init|run|delegate"
+  fail "usage: $0 ROOT init TARGET RESULT|announce|probe TARGET|mutate TARGET|disposition VALUE|route-prior TARGET|route-observed TARGET|score TARGET RESULT DISPOSITION|score-routes TARGET|soulmate-init|run|delegate"
 }
 
 valid_word() {
@@ -92,6 +92,27 @@ case "$action" in
       *) fail "unknown disposition: $1" ;;
     esac
     printf 'disposition\t%s\n' "$1" >>"$trace"
+    ;;
+  route-prior)
+    test "$#" = 1 || usage
+    valid_word "$1"
+    test -f "$authority" || fail 'authority is not initialized'
+    authority_target=$(awk -F '\t' '$1 == "target" { print $2; exit }' "$authority")
+    test "$1" = "$authority_target" || fail 'route target is not authoritative'
+    printf 'courier\tprior\tcommand-rediscovery\n' >>"$trace"
+    printf 'courier\tprior\texecute\n' >>"$trace"
+    printf 'courier\tprior\tread-exit\n' >>"$trace"
+    printf 'courier\tprior\tcarry-exact-target\n' >>"$trace"
+    printf 'courier\tprior\tsubmit-report\n' >>"$trace"
+    ;;
+  route-observed)
+    test "$#" = 1 || usage
+    valid_word "$1"
+    test -f "$authority" || fail 'authority is not initialized'
+    authority_target=$(awk -F '\t' '$1 == "target" { print $2; exit }' "$authority")
+    test "$1" = "$authority_target" || fail 'route target is not authoritative'
+    printf 'courier\tobserved\tidentify-exact-target\n' >>"$trace"
+    printf 'courier\tobserved\tinvoke-observe-check\n' >>"$trace"
     ;;
   soulmate-init|run|delegate)
     test "$#" = 0 || usage
@@ -179,6 +200,41 @@ case "$action" in
         exit(verdict == "pass" ? 0 : 1)
       }
     ' "$trace"
+    ;;
+  score-routes)
+    test "$#" = 1 || usage
+    target=$1
+    valid_word "$target"
+    test -f "$authority" || fail 'authority is not initialized'
+    authority_target=$(awk -F '\t' '$1 == "target" { print $2; exit }' "$authority")
+    test "$target" = "$authority_target" || fail 'route score target is not authoritative'
+    prior_actions=$(awk -F '\t' '$1 == "courier" && $2 == "prior" { count++ } END { print count + 0 }' "$trace")
+    prior_execute=$(awk -F '\t' '$1 == "courier" && $2 == "prior" && $3 == "execute" { count++ } END { print count + 0 }' "$trace")
+    observed_actions=$(awk -F '\t' '$1 == "courier" && $2 == "observed" { count++ } END { print count + 0 }' "$trace")
+    prior_target=$(awk -F '\t' '$1 == "courier" && $2 == "prior" && $3 == "carry-exact-target" { count++ } END { print count + 0 }' "$trace")
+    observed_target=$(awk -F '\t' '$1 == "courier" && $2 == "observed" && $3 == "identify-exact-target" { count++ } END { print count + 0 }' "$trace")
+    observed_invoke=$(awk -F '\t' '$1 == "courier" && $2 == "observed" && $3 == "invoke-observe-check" { count++ } END { print count + 0 }' "$trace")
+    eliminated=0
+    for responsibility in command-rediscovery read-exit submit-report
+    do
+      prior=$(awk -F '\t' -v item="$responsibility" '$1 == "courier" && $2 == "prior" && $3 == item { count++ } END { print count + 0 }' "$trace")
+      observed=$(awk -F '\t' -v item="$responsibility" '$1 == "courier" && $2 == "observed" && $3 == item { count++ } END { print count + 0 }' "$trace")
+      test "$prior" = 1 && test "$observed" = 0 || fail "route evidence is incomplete: $responsibility"
+      eliminated=$((eliminated + 1))
+    done
+    test "$prior_actions" = 5 || fail "route evidence has prior action count $prior_actions"
+    test "$prior_execute" = 1 || fail "route evidence has prior execute action count $prior_execute"
+    test "$observed_actions" = 2 || fail "route evidence has observed action count $observed_actions"
+    test "$prior_target" = 1 && test "$observed_target" = 1 || fail 'target identity must remain explicit'
+    test "$observed_invoke" = 1 || fail 'observe-check invocation must remain explicit'
+    printf 'prior_route_actions=%s\n' "$prior_actions"
+    printf 'observed_route_actions=%s\n' "$observed_actions"
+    printf 'eliminated_courier_responsibilities=%s\n' "$eliminated"
+    printf 'eliminated=command-rediscovery,exit-status-transfer,result-report-submission\n'
+    printf 'target_identity_eliminated=false\n'
+    printf 'invocation_eliminated=false\n'
+    printf 'agent_behavior=not_observed\n'
+    printf 'product_benefit=not_measured\n'
     ;;
   *)
     usage

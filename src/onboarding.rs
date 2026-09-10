@@ -255,7 +255,7 @@ fn command_exists(name: &str) -> bool {
 }
 fn dotagents_check(project_config: bool) -> Value {
     if command_exists("dotagents") {
-        return json!({"name":"dotagents","ok":true,"detail":"optional distribution command on PATH"});
+        return json!({"name":"dotagents","ok":true,"detail":"optional distribution command on PATH; host-specific caches and active-session reload were not inspected"});
     }
     let npx = command_exists("npx");
     let global_config = std::env::var_os("HOME")
@@ -270,7 +270,7 @@ fn dotagents_check(project_config: bool) -> Value {
         (false, true) => "command absent; agents.toml observed; launcher not verified",
         (false, false) => "optional distribution command absent",
     };
-    json!({"name":"dotagents","ok":false,"detail":detail})
+    json!({"name":"dotagents","ok":false,"detail":format!("{detail}; host-specific caches and active-session reload were not inspected")})
 }
 fn absolute(path: &Path) -> Result<PathBuf, String> {
     if path.is_absolute() {

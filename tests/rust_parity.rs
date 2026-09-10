@@ -688,7 +688,7 @@ fn doctor_reports_npx_managed_dotagents_without_invoking_it() {
         .unwrap();
     assert!(doctor.status.success());
     assert!(String::from_utf8_lossy(&doctor.stdout)
-        .contains("npx launcher and agents.toml observed; package not invoked"));
+        .contains("npx launcher and agents.toml observed; package not invoked; host-specific caches and active-session reload were not inspected"));
     fs::remove_dir_all(root).unwrap();
 }
 

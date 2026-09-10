@@ -1,9 +1,7 @@
 //! Typed value-proof records derived from a run ledger.
 //!
-//! This module deliberately does not execute a check command.  A host (or a
-//! caller using the CLI) reports the result and the run reducer verifies that
-//! the report names the configured command and the exact current worker
-//! submission.
+//! The checked-run value boundary validates both caller-reported and locally
+//! observed results.  Observation execution itself lives in `run.rs`.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -79,6 +77,8 @@ struct CheckTarget {
     status: CheckTargetStatus,
     check_event_sha256: Option<String>,
     exit_code: Option<u64>,
+    result: Option<Value>,
+    acquisition: Option<String>,
 }
 
 impl CheckTarget {
@@ -91,6 +91,28 @@ impl CheckTarget {
             value["checkEventSha256"] = json!(check_event_sha256);
         }
         if let Some(exit_code) = self.exit_code {
+            value["exitCode"] = json!(exit_code);
+        }
+        if let Some(result) = &self.result {
+            value["result"] = result.clone();
+        }
+        if let Some(acquisition) = &self.acquisition {
+            value["acquisition"] = json!(acquisition);
+        }
+        value
+    }
+
+    fn protection_value(&self) -> Value {
+        let mut value = json!({
+            "targetEventSha256": self.target_event_sha256,
+            "status": self.status.as_str(),
+        });
+        if let Some(check_event_sha256) = &self.check_event_sha256 {
+            value["checkEventSha256"] = json!(check_event_sha256);
+        }
+        if let Some(result) = &self.result {
+            value["result"] = result.clone();
+        } else if let Some(exit_code) = self.exit_code {
             value["exitCode"] = json!(exit_code);
         }
         value
@@ -107,6 +129,31 @@ impl CheckTarget {
     fn is_observed(&self) -> bool {
         self.check_event_sha256.is_some()
     }
+}
+
+fn check_result(event: &Value) -> Option<Value> {
+    event.get("result").cloned()
+}
+
+fn check_acquisition(event: &Value) -> Option<String> {
+    Some(
+        event["acquisition"]
+            .as_str()
+            .unwrap_or("reported")
+            .to_owned(),
+    )
+}
+
+fn check_exit_code(event: &Value) -> Option<u64> {
+    event["exitCode"].as_u64().or_else(|| {
+        (event["result"]["kind"] == "exit")
+            .then(|| event["result"]["code"].as_u64())
+            .flatten()
+    })
+}
+
+fn check_passed(event: &Value) -> bool {
+    check_exit_code(event) == Some(0)
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,6 +174,42 @@ struct CheckObservation {
     origin: ProofOrigin,
     #[serde(rename = "exitCode")]
     _exit_code: u64,
+    #[serde(rename = "durationMs")]
+    duration_ms: Option<u64>,
+    #[serde(rename = "previousEventSha256")]
+    previous_event_sha256: Option<String>,
+    timestamp: String,
+    #[serde(rename = "eventSha256")]
+    event_sha256: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind")]
+enum CheckResult {
+    #[serde(rename = "exit")]
+    Exit { code: u64 },
+    #[serde(rename = "signal")]
+    Signal { signal: u64 },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CheckObservationV4 {
+    version: u64,
+    kind: String,
+    producer: Value,
+    action: CheckAction,
+    #[serde(rename = "runId")]
+    run_id: String,
+    #[serde(rename = "targetEventSha256")]
+    target_event_sha256: String,
+    #[serde(rename = "checkCommand")]
+    check_command: String,
+    #[serde(rename = "checkCommandSha256")]
+    check_command_sha256: String,
+    origin: ProofOrigin,
+    acquisition: String,
+    result: CheckResult,
     #[serde(rename = "durationMs")]
     duration_ms: Option<u64>,
     #[serde(rename = "previousEventSha256")]
@@ -280,6 +363,9 @@ pub(crate) fn policy_from_value(value: &Value, line: usize) -> Result<CheckPolic
 }
 
 pub(crate) fn validate_check_event(event: &Value, line: usize) -> Result<(), String> {
+    if event["version"] == 4 {
+        return validate_check_event_v4(event, line);
+    }
     let record: CheckObservation = serde_json::from_value(event.clone())
         .map_err(|_| format!("invalid run ledger line {line}: malformed check event"))?;
     let object = event
@@ -355,7 +441,96 @@ pub(crate) fn validate_check_event(event: &Value, line: usize) -> Result<(), Str
     Ok(())
 }
 
+fn validate_check_event_v4(event: &Value, line: usize) -> Result<(), String> {
+    let record: CheckObservationV4 = serde_json::from_value(event.clone())
+        .map_err(|_| format!("invalid run ledger line {line}: malformed check event"))?;
+    let object = event
+        .as_object()
+        .ok_or_else(|| format!("invalid run ledger line {line}: check event must be an object"))?;
+    let allowed = [
+        "version",
+        "kind",
+        "producer",
+        "action",
+        "runId",
+        "targetEventSha256",
+        "checkCommand",
+        "checkCommandSha256",
+        "origin",
+        "acquisition",
+        "result",
+        "durationMs",
+        "previousEventSha256",
+        "timestamp",
+        "eventSha256",
+    ];
+    reject_unknown(object, &allowed, line, "check")?;
+    let required = [
+        "version",
+        "kind",
+        "producer",
+        "action",
+        "runId",
+        "targetEventSha256",
+        "checkCommand",
+        "checkCommandSha256",
+        "origin",
+        "acquisition",
+        "result",
+        "previousEventSha256",
+        "timestamp",
+        "eventSha256",
+    ];
+    let result_valid = match &record.result {
+        CheckResult::Exit { code } => event["result"].as_object().is_some_and(|result| {
+            result.len() == 2
+                && result.get("kind") == Some(&json!("exit"))
+                && result["code"].as_u64() == Some(*code)
+        }),
+        CheckResult::Signal { signal } => event["result"].as_object().is_some_and(|result| {
+            result.len() == 2 && result.get("kind") == Some(&json!("signal")) && *signal > 0
+        }),
+    };
+    if !required.iter().all(|key| object.contains_key(*key))
+        || record.version != 4
+        || record.kind != "run"
+        || record.action != CheckAction::Check
+        || !crate::producer::valid(&record.producer)
+        || !is_sha(Some(&record.run_id))
+        || !is_sha(Some(&record.target_event_sha256))
+        || record.check_command.trim().is_empty()
+        || record.check_command.contains('\0')
+        || !is_sha(Some(&record.check_command_sha256))
+        || crate::hash::text(&record.check_command) != record.check_command_sha256
+        || record.origin.as_str() != event["origin"]
+        || !matches!(record.acquisition.as_str(), "reported" | "observed")
+        || !result_valid
+        || !valid_timestamp(&record.timestamp)
+        || !is_sha(Some(&record.event_sha256))
+    {
+        return Err(format!(
+            "invalid run ledger line {line}: malformed check event"
+        ));
+    }
+    if record.previous_event_sha256.is_none() && event["previousEventSha256"] != Value::Null {
+        return Err(format!(
+            "invalid run ledger line {line}: previous event hash is malformed"
+        ));
+    }
+    if let Some(duration) = event.get("durationMs") {
+        if !duration.is_null() && record.duration_ms.is_none() {
+            return Err(format!(
+                "invalid run ledger line {line}: durationMs must be a non-negative integer or null"
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_protection_event(event: &Value, line: usize) -> Result<(), String> {
+    if event["version"] == 4 {
+        return validate_protection_event_v4(event, line);
+    }
     let record: ProtectionRecord = serde_json::from_value(event.clone())
         .map_err(|_| format!("invalid run ledger line {line}: malformed protection event"))?;
     let object = event.as_object().ok_or_else(|| {
@@ -425,6 +600,111 @@ pub(crate) fn validate_protection_event(event: &Value, line: usize) -> Result<()
         ));
     }
     Ok(())
+}
+
+fn validate_protection_event_v4(event: &Value, line: usize) -> Result<(), String> {
+    let object = event.as_object().ok_or_else(|| {
+        format!("invalid run ledger line {line}: protection event must be an object")
+    })?;
+    let allowed = [
+        "version",
+        "kind",
+        "producer",
+        "action",
+        "runId",
+        "stage",
+        "attempt",
+        "actor",
+        "role",
+        "attemptedOutcome",
+        "reason",
+        "checkEvidence",
+        "origin",
+        "previousEventSha256",
+        "timestamp",
+        "eventSha256",
+    ];
+    reject_unknown(object, &allowed, line, "protection")
+        .map_err(|_| format!("invalid run ledger line {line}: malformed protection event"))?;
+    let evidence = object
+        .get("checkEvidence")
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("invalid run ledger line {line}: malformed protection evidence"))?;
+    if event["version"] != 4
+        || event["kind"] != "run"
+        || event["action"] != "protect"
+        || !crate::producer::valid(&event["producer"])
+        || !is_sha(event["runId"].as_str())
+        || event["stage"].as_u64().map_or(true, |x| x < 1)
+        || event["attempt"].as_u64().map_or(true, |x| x < 1)
+        || event["actor"].as_str().map_or(true, str::is_empty)
+        || event["role"] != "lead"
+        || event["attemptedOutcome"] != "accepted"
+        || evidence.is_empty()
+        || !matches!(
+            event["reason"].as_str(),
+            Some("check_missing" | "check_failed")
+        )
+        || !matches!(event["origin"].as_str(), Some("local_report" | "synthetic"))
+        || !event["timestamp"].as_str().is_some_and(valid_timestamp)
+        || !is_sha(event["eventSha256"].as_str())
+    {
+        return Err(format!(
+            "invalid run ledger line {line}: malformed protection event"
+        ));
+    }
+    for item in evidence {
+        validate_check_evidence_v4(item, line)?;
+    }
+    let has_missing = evidence.iter().any(|item| item["status"] == "missing");
+    let has_failed = evidence.iter().any(|item| item["status"] == "failed");
+    if (!has_missing && event["reason"] == "check_missing")
+        || (!has_failed && event["reason"] == "check_failed")
+    {
+        return Err(format!(
+            "invalid run ledger line {line}: protection reason does not match evidence"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_check_evidence_v4(value: &Value, line: usize) -> Result<(), String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| format!("invalid run ledger line {line}: malformed protection evidence"))?;
+    if !is_sha(value["targetEventSha256"].as_str()) {
+        return Err(format!(
+            "invalid run ledger line {line}: malformed protection evidence"
+        ));
+    }
+    match value["status"].as_str() {
+        Some("missing") if object.len() == 2 && object.contains_key("targetEventSha256") => Ok(()),
+        Some("failed")
+            if object.len() == 4
+                && object.contains_key("checkEventSha256")
+                && is_sha(value["checkEventSha256"].as_str())
+                && object.contains_key("result") =>
+        {
+            let result = &value["result"];
+            let valid = result.as_object().is_some_and(|result| {
+                result.len() == 2
+                    && matches!(result["kind"].as_str(), Some("exit" | "signal"))
+                    && (result["kind"] == "exit" && result["code"].is_u64()
+                        || result["kind"] == "signal"
+                            && result["signal"].as_u64().is_some_and(|signal| signal > 0))
+            });
+            if valid {
+                Ok(())
+            } else {
+                Err(format!(
+                    "invalid run ledger line {line}: malformed protection evidence"
+                ))
+            }
+        }
+        _ => Err(format!(
+            "invalid run ledger line {line}: malformed protection evidence"
+        )),
+    }
 }
 
 fn validate_check_evidence(value: &Value, line: usize) -> Result<(), String> {
@@ -507,18 +787,24 @@ pub(crate) fn check_guard(state: &Value) -> Result<CheckAssessment, String> {
                     status: CheckTargetStatus::Missing,
                     check_event_sha256: None,
                     exit_code: None,
+                    result: None,
+                    acquisition: None,
                 },
-                Some(check) if check["exitCode"] == 0 => CheckTarget {
+                Some(check) if check_passed(check) => CheckTarget {
                     target_event_sha256,
                     status: CheckTargetStatus::Passed,
                     check_event_sha256: check["eventSha256"].as_str().map(str::to_owned),
-                    exit_code: check["exitCode"].as_u64(),
+                    exit_code: check_exit_code(check),
+                    result: check_result(check),
+                    acquisition: check_acquisition(check),
                 },
                 Some(check) => CheckTarget {
                     target_event_sha256,
                     status: CheckTargetStatus::Failed,
                     check_event_sha256: check["eventSha256"].as_str().map(str::to_owned),
-                    exit_code: check["exitCode"].as_u64(),
+                    exit_code: check_exit_code(check),
+                    result: check_result(check),
+                    acquisition: check_acquisition(check),
                 },
             })
         })
@@ -603,10 +889,17 @@ pub(crate) fn validate_check_against_state(
         .ok_or_else(|| format!("invalid run ledger line {line}: check target is malformed"))?;
     validate_check_target(state, target)
         .map_err(|error| format!("invalid run ledger line {line}: {error}"))?;
-    if event["checkCommand"] != policy.command
-        || event["checkCommandSha256"] != policy.command_sha256
-        || event["origin"] != policy.origin.as_str()
-    {
+    let version = state["version"].as_u64().unwrap_or(0);
+    let policy_matches = event["checkCommand"] == policy.command
+        && event["checkCommandSha256"] == policy.command_sha256
+        && event["origin"] == policy.origin.as_str();
+    let shape_matches = if version == 4 {
+        event["version"] == 4
+            && matches!(event["acquisition"].as_str(), Some("reported" | "observed"))
+    } else {
+        event["version"] == 3 && event.get("acquisition").is_none()
+    };
+    if !policy_matches || !shape_matches {
         return Err(format!(
             "invalid run ledger line {line}: check report does not match configured policy"
         ));
@@ -650,7 +943,13 @@ pub(crate) fn validate_protection_against_state(
         .targets
         .iter()
         .filter(|target| target.is_missing() || target.is_failed())
-        .map(CheckTarget::value)
+        .map(|target| {
+            if state["version"] == 4 {
+                target.protection_value()
+            } else {
+                target.value()
+            }
+        })
         .collect::<Vec<_>>();
     if event["reason"] != assessment.reason().unwrap_or_default()
         || event["origin"]
@@ -686,8 +985,21 @@ pub(crate) fn protection_event(
         .ok_or("acceptance is not blocked by a configured check")?
         .origin
         .as_str();
+    let version = state["version"].as_u64().unwrap_or(3);
+    let evidence = assessment
+        .targets
+        .iter()
+        .filter(|target| target.is_missing() || target.is_failed())
+        .map(|target| {
+            if version == 4 {
+                target.protection_value()
+            } else {
+                target.value()
+            }
+        })
+        .collect::<Vec<_>>();
     Ok(json!({
-        "version": 3,
+        "version": version,
         "kind": "run",
         "producer": crate::producer::evidence(),
         "action": "protect",
@@ -698,7 +1010,7 @@ pub(crate) fn protection_event(
         "role": "lead",
         "attemptedOutcome": "accepted",
         "reason": reason,
-        "checkEvidence": assessment.targets.iter().filter(|target| target.is_missing() || target.is_failed()).map(CheckTarget::value).collect::<Vec<_>>(),
+        "checkEvidence": evidence,
         "origin": origin,
         "previousEventSha256": previous_event["eventSha256"],
         "timestamp": timestamp,
@@ -766,11 +1078,14 @@ pub(crate) struct HumanCheckTarget {
     pub(crate) status: String,
     pub(crate) check_event_sha256: Option<String>,
     pub(crate) exit_code: Option<u64>,
+    pub(crate) acquisition: Option<String>,
+    pub(crate) result: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct HumanChecks {
     pub(crate) state: HumanCheckState,
+    pub(crate) observed_capable: bool,
     pub(crate) command: Option<String>,
     pub(crate) command_sha256: Option<String>,
     pub(crate) origin: Option<String>,
@@ -924,6 +1239,8 @@ fn human_check_target(
     status: &str,
     check_event_sha256: Option<String>,
     exit_code: Option<u64>,
+    acquisition: Option<String>,
+    result: Option<Value>,
 ) -> HumanCheckTarget {
     HumanCheckTarget {
         worker,
@@ -931,13 +1248,20 @@ fn human_check_target(
         status: status.to_owned(),
         check_event_sha256,
         exit_code,
+        acquisition,
+        result: result.map(|value| value.to_string()),
     }
 }
 
-fn human_checks(workers: &[HumanWorker], assessment: &CheckAssessment) -> HumanChecks {
+fn human_checks(
+    workers: &[HumanWorker],
+    assessment: &CheckAssessment,
+    version: u64,
+) -> HumanChecks {
     let Some(policy) = assessment.policy.as_ref() else {
         return HumanChecks {
             state: HumanCheckState::Unconfigured,
+            observed_capable: false,
             command: None,
             command_sha256: None,
             origin: None,
@@ -958,12 +1282,16 @@ fn human_checks(workers: &[HumanWorker], assessment: &CheckAssessment) -> HumanC
                 target.status.as_str(),
                 target.check_event_sha256.clone(),
                 target.exit_code,
+                target.acquisition.clone(),
+                target.result.clone(),
             ));
         } else {
             targets.push(human_check_target(
                 Some(worker.identity.clone()),
                 current_event,
                 "missing",
+                None,
+                None,
                 None,
                 None,
             ));
@@ -979,6 +1307,8 @@ fn human_checks(workers: &[HumanWorker], assessment: &CheckAssessment) -> HumanC
                 target.status.as_str(),
                 target.check_event_sha256.clone(),
                 target.exit_code,
+                target.acquisition.clone(),
+                target.result.clone(),
             ));
         }
     }
@@ -993,8 +1323,14 @@ fn human_checks(workers: &[HumanWorker], assessment: &CheckAssessment) -> HumanC
     } else {
         HumanCheckState::Passed
     };
+    if version != 4 {
+        for target in &mut targets {
+            target.acquisition = Some("reported".to_owned());
+        }
+    }
     HumanChecks {
         state,
+        observed_capable: version == 4,
         command: Some(policy.command.clone()),
         command_sha256: Some(policy.command_sha256.clone()),
         origin: Some(policy.origin.as_str().to_owned()),
@@ -1002,8 +1338,17 @@ fn human_checks(workers: &[HumanWorker], assessment: &CheckAssessment) -> HumanC
     }
 }
 
+fn check_guidance(state: &Value) -> &'static str {
+    if state["version"] == 4 {
+        "observe the frozen check locally with run observe-check, or report the actual result from the host with run record-check, for every current worker target"
+    } else {
+        "run the configured check in its host and report the actual result for every current worker target with run record-check"
+    }
+}
+
 fn protection_from_value(
     event: &Value,
+    state: &Value,
     workers: &[HumanWorker],
     current_attempt: u64,
 ) -> Result<HumanProtection, String> {
@@ -1026,12 +1371,28 @@ fn protection_from_value(
                             .any(|record| record.event_sha256 == target)
                 })
                 .map(|candidate| candidate.identity.clone());
+            let check_event_sha256 = item["checkEventSha256"].as_str().map(str::to_owned);
+            let acquisition = check_event_sha256
+                .as_deref()
+                .and_then(|wanted| {
+                    state["checks"].as_array()?.iter().find_map(|check| {
+                        (check["eventSha256"].as_str() == Some(wanted)).then(|| {
+                            check["acquisition"]
+                                .as_str()
+                                .unwrap_or("reported")
+                                .to_owned()
+                        })
+                    })
+                })
+                .or_else(|| (state["version"] == 3).then(|| "reported".to_owned()));
             Ok(human_check_target(
                 worker,
                 Some(target),
                 &required_str(item, "status", "protection evidence")?,
-                item["checkEventSha256"].as_str().map(str::to_owned),
+                check_event_sha256,
                 item["exitCode"].as_u64(),
+                acquisition,
+                item["result"].as_object().map(|_| item["result"].clone()),
             ))
         })
         .collect::<Result<Vec<_>, String>>()?;
@@ -1119,13 +1480,17 @@ pub(crate) fn human_status(state: &Value, artifact_current: bool) -> Result<Huma
         .map(|submission| record_from_submission(state, submission))
         .collect::<Result<Vec<_>, String>>()?;
     let assessment = check_guard(state)?;
-    let checks = human_checks(&workers, &assessment);
+    let checks = human_checks(
+        &workers,
+        &assessment,
+        state["version"].as_u64().unwrap_or(3),
+    );
     let empty_protections = Vec::new();
     let protections = state["protections"]
         .as_array()
         .unwrap_or(&empty_protections)
         .iter()
-        .map(|event| protection_from_value(event, &workers, current_attempt))
+        .map(|event| protection_from_value(event, state, &workers, current_attempt))
         .collect::<Result<Vec<_>, String>>()?;
     let guidance = if state["status"] != "running" {
         Some("this run is terminal; inspect its recorded outcome before choosing an explicit successor where supported")
@@ -1135,11 +1500,9 @@ pub(crate) fn human_status(state: &Value, artifact_current: bool) -> Result<Huma
         )
     } else {
         match checks.state {
-            HumanCheckState::NotObserved | HumanCheckState::Blocked => Some(
-                "run the configured check in its host and report the actual result for every current worker target with run record-check",
-            ),
+            HumanCheckState::NotObserved | HumanCheckState::Blocked => Some(check_guidance(state)),
             HumanCheckState::Passed => Some(
-                "checks passed; reviewer approval and lead acceptance remain separate authority steps",
+                "checks passed after recording the actual result; reviewer approval and lead acceptance remain separate authority steps",
             ),
             HumanCheckState::Unconfigured => None,
         }
@@ -1187,7 +1550,11 @@ pub(crate) fn human_explain(
         })
         .transpose()?;
     let guidance = if protection.is_some() {
-        "rerun the configured check in its host and report the actual result for every current worker completion; repair or rework if needed, then request review and acceptance again; a passing report still requires authority"
+        if state["version"] == 4 {
+            "observe the frozen check locally or report its host result for every current worker completion; repair or rework if needed, then request review and acceptance again; a passing result still requires authority"
+        } else {
+            "rerun the configured check in its host and report the actual result for every current worker completion; repair or rework if needed, then request review and acceptance again; a passing report still requires authority"
+        }
     } else {
         "inspect the exact evidence references before choosing repair, rework, or acceptance"
     };
@@ -1460,7 +1827,7 @@ pub(crate) fn aggregate(states: &[Value]) -> Result<Value, String> {
             &mut group.failed_checks,
             checks
                 .iter()
-                .filter(|check| check["exitCode"].as_u64().is_some_and(|code| code != 0))
+                .filter(|check| check_exit_code(check) != Some(0))
                 .count() as u64,
         )?;
         add_counter(
@@ -1472,9 +1839,11 @@ pub(crate) fn aggregate(states: &[Value]) -> Result<Value, String> {
                 .count() as u64,
         )?;
         for check in checks {
-            if let Some(duration) = check["durationMs"].as_u64() {
-                add_counter(&mut group.duration_ms_reported, duration)?;
-                add_counter(&mut group.duration_ms_reported_count, 1)?;
+            if check["acquisition"] != "observed" {
+                if let Some(duration) = check["durationMs"].as_u64() {
+                    add_counter(&mut group.duration_ms_reported, duration)?;
+                    add_counter(&mut group.duration_ms_reported_count, 1)?;
+                }
             }
         }
     }

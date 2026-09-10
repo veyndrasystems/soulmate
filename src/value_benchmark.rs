@@ -26,6 +26,7 @@ const CHECK_COMMAND: &str = "soulmate check --config verification.json";
 const CLAIM: &str = "In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.";
 const EXPECTED_JSON: &str = include_str!("../proof/scenarios/false-completion-v1/expected.json");
 const RUN_EVENT_V3_SCHEMA: &str = include_str!("../schema/run-event-v3.schema.json");
+const RUN_EVENT_V4_SCHEMA: &str = include_str!("../schema/run-event-v4.schema.json");
 const VALUE_REPORT_V1_SCHEMA: &str = include_str!("../schema/value-report-v1.schema.json");
 const VALUE_PROOF_V1_SCHEMA: &str = include_str!("../schema/value-proof-v1.schema.json");
 const SCENARIO_README: &str = include_str!("../proof/scenarios/false-completion-v1/README.md");
@@ -1027,7 +1028,7 @@ fn require_submission_event(
         || event["agent"] != agent
         || event["outcome"] != outcome
         || event["attempt"] != attempt
-        || event["version"] != 3
+        || !matches!(event["version"].as_u64(), Some(3 | 4))
     {
         return Err(format!("{label} returned an unexpected event"));
     }
@@ -1044,7 +1045,7 @@ fn require_check_event(
         || event["targetEventSha256"] != target
         || event["checkCommand"] != CHECK_COMMAND
         || event["origin"] != SCENARIO_ORIGIN
-        || event["exitCode"] != exit_code
+        || event_exit_code(event) != Some(exit_code as u64)
     {
         return Err(format!(
             "{label} did not retain its exact target, policy, or exit code"
@@ -1272,14 +1273,22 @@ fn has_canonical_acceptance(events: &[Value]) -> bool {
 fn has_event_for_exit(events: &[Value], action: &str, exit_code: u64) -> bool {
     events
         .iter()
-        .any(|event| event["action"] == action && event["exitCode"] == exit_code)
+        .any(|event| event["action"] == action && event_exit_code(event) == Some(exit_code))
 }
 
 fn has_event_for_target(events: &[Value], action: &str, target: &str, exit_code: u64) -> bool {
     events.iter().any(|event| {
         event["action"] == action
             && event["targetEventSha256"] == target
-            && event["exitCode"] == exit_code
+            && event_exit_code(event) == Some(exit_code)
+    })
+}
+
+fn event_exit_code(event: &Value) -> Option<u64> {
+    event["exitCode"].as_u64().or_else(|| {
+        (event["result"]["kind"] == "exit")
+            .then(|| event["result"]["code"].as_u64())
+            .flatten()
     })
 }
 
@@ -1601,6 +1610,7 @@ fn export_bundle(
     }
     for (name, schema) in [
         ("run-event-v3.schema.json", RUN_EVENT_V3_SCHEMA),
+        ("run-event-v4.schema.json", RUN_EVENT_V4_SCHEMA),
         ("value-report-v1.schema.json", VALUE_REPORT_V1_SCHEMA),
         ("value-proof-v1.schema.json", VALUE_PROOF_V1_SCHEMA),
     ] {

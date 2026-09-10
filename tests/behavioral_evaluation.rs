@@ -232,3 +232,71 @@ fn authority_is_write_once_and_probe_cannot_spoof_result() {
     assert!(output.contains("ordering=fail-evidence"));
     cleanup(root);
 }
+
+#[test]
+fn observed_route_counts_only_three_eliminated_courier_responsibilities() {
+    let root = root("observed-route");
+    invoke(&root, &["init", TARGET, "ready"]);
+    invoke(&root, &["route-prior", TARGET]);
+    invoke(&root, &["route-observed", TARGET]);
+    let evaluated = run(&root, &["score-routes", TARGET]);
+    assert!(evaluated.status.success(), "{}", text(&evaluated));
+    let output = text(&evaluated);
+    for expected in [
+        "prior_route_actions=5",
+        "observed_route_actions=2",
+        "eliminated_courier_responsibilities=3",
+        "eliminated=command-rediscovery,exit-status-transfer,result-report-submission",
+        "target_identity_eliminated=false",
+        "invocation_eliminated=false",
+        "agent_behavior=not_observed",
+        "product_benefit=not_measured",
+    ] {
+        assert!(output.contains(expected), "missing {expected}: {output}");
+    }
+    let trace = fs::read_to_string(root.join("behavioral-trace.tsv")).unwrap();
+    assert!(trace.contains("courier\tprior\tcarry-exact-target"));
+    assert!(trace.contains("courier\tobserved\tidentify-exact-target"));
+    assert!(trace.contains("courier\tobserved\tinvoke-observe-check"));
+    cleanup(root);
+}
+
+#[test]
+fn route_score_rejects_missing_or_wrong_route_evidence() {
+    let missing = root("observed-route-missing");
+    invoke(&missing, &["init", TARGET, "ready"]);
+    let evaluated = run(&missing, &["score-routes", TARGET]);
+    assert!(!evaluated.status.success());
+    assert!(text(&evaluated).contains("route evidence is incomplete"));
+    cleanup(missing);
+
+    let wrong = root("observed-route-wrong-target");
+    invoke(&wrong, &["init", TARGET, "ready"]);
+    let rejected = run(&wrong, &["route-observed", "adjacent-target"]);
+    assert!(!rejected.status.success());
+    let evaluated = run(&wrong, &["score-routes", TARGET]);
+    assert!(!evaluated.status.success());
+    cleanup(wrong);
+}
+
+#[test]
+fn route_score_rejects_wrong_prior_invocation_even_with_five_lines() {
+    let root = root("observed-route-wrong-invocation");
+    invoke(&root, &["init", TARGET, "ready"]);
+    invoke(&root, &["route-prior", TARGET]);
+    invoke(&root, &["route-observed", TARGET]);
+    let trace_path = root.join("behavioral-trace.tsv");
+    let trace = fs::read_to_string(&trace_path).unwrap();
+    fs::write(
+        &trace_path,
+        trace.replace(
+            "courier\tprior\texecute",
+            "courier\tprior\twrong-invocation",
+        ),
+    )
+    .unwrap();
+    let evaluated = run(&root, &["score-routes", TARGET]);
+    assert!(!evaluated.status.success());
+    assert!(text(&evaluated).contains("prior execute action count 0"));
+    cleanup(root);
+}

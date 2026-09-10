@@ -183,6 +183,39 @@ fn replayed_forged_acceptance_requires_passing_check() {
 }
 
 #[test]
+fn replayed_check_after_terminal_state_is_rejected() {
+    let (root, _ledger, without_check, worker_target) =
+        prepare_checked_project("value-replay-terminal-check");
+    let mut forged = without_check;
+    append_forged_acceptance(&root, &mut forged, "replay-terminal-check.md");
+    forged[4]["outcome"] = json!("rejected");
+    let head = forged.last().unwrap().clone();
+    forged.push(json!({
+        "version": 4,
+        "kind": "run",
+        "producer": {"name": "soulmate", "version": env!("CARGO_PKG_VERSION"), "commit": null},
+        "action": "check",
+        "runId": forged[0]["runId"],
+        "targetEventSha256": worker_target,
+        "checkCommand": CHECK,
+        "checkCommandSha256": sha256(CHECK.as_bytes()),
+        "origin": "synthetic",
+        "acquisition": "reported",
+        "result": {"kind": "exit", "code": 0},
+        "durationMs": null,
+        "previousEventSha256": head["eventSha256"],
+        "timestamp": head["timestamp"],
+    }));
+    rehash_chain(&mut forged);
+    let terminal_ledger = ".soulmate/runs/replay-terminal-check.jsonl";
+    write_events(&root, terminal_ledger, &forged);
+    let rejected = inspect(&root, terminal_ledger);
+    assert!(!rejected.status.success(), "{}", text(&rejected));
+    assert_contains_all(&rejected, &["run has already reached a terminal state"]);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn replayed_v3_shape_and_policy_mutations_are_rejected_after_rehash() {
     let (root, ledger, without_check, worker_target) =
         prepare_checked_project("value-replay-shapes");
@@ -287,6 +320,40 @@ fn replayed_v3_shape_and_policy_mutations_are_rejected_after_rehash() {
         malformed_protection,
         &["malformed protection event"],
     );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn live_v3_checked_submit_and_record_check_preserve_historical_version() {
+    let root = project("value-replay-live-v3");
+    let ledger = ".soulmate/runs/live-v3.jsonl";
+    checked_start(&root, ledger);
+    let lead = state_artifact(&root, "live-v3-lead.md", "lead scope\n");
+    submit(&root, "lead", ledger, "scoped", &lead);
+    let mut prefix = read_events(&root, ledger);
+    for event in &mut prefix {
+        event["version"] = json!(3);
+    }
+    rehash_chain(&mut prefix);
+    write_events(&root, ledger, &prefix);
+
+    let worker = state_artifact(&root, "live-v3-worker.md", "worker completion\n");
+    submit(&root, "worker", ledger, "completed", &worker);
+    let events = read_events(&root, ledger);
+    let worker_event = events
+        .iter()
+        .find(|event| event["role"] == "worker")
+        .expect("worker submission");
+    assert_eq!(worker_event["version"], 3);
+    let target = worker_event["eventSha256"].as_str().unwrap();
+    record_check(&root, ledger, target, "0");
+    let checked = read_events(&root, ledger);
+    let check = checked
+        .iter()
+        .find(|event| event["action"] == "check")
+        .expect("check event");
+    assert_eq!(check["version"], 3);
+    assert_eq!(check["exitCode"], 0);
     fs::remove_dir_all(root).unwrap();
 }
 

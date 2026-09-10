@@ -461,6 +461,7 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
             "duration-ms",
             "json",
         ][..],
+        "observe-check" => &["config", "target", "json"][..],
         "status" => &["config", "json"][..],
         "explain" => &["config", "event", "json"][..],
         "report" => &["config", "json"][..],
@@ -476,7 +477,7 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
             "json",
         ][..],
         _ => {
-            return Err("run requires one action: start, next, submit, record-check, status, explain, report, inspect, or supersede".into())
+            return Err("run requires one action: start, next, submit, record-check, observe-check, status, explain, report, inspect, or supersede".into())
         }
     };
     args::assert_options("run", a, allowed)?;
@@ -542,6 +543,14 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
                 )?,
                 option(a, "exit-code", "run record-check requires --exit-code")?,
                 a.options.get("duration-ms").map(String::as_str),
+            )
+        }
+        "observe-check" => {
+            args::assert_positionals("run observe-check", a, 2)?;
+            run::observe_check(
+                l,
+                positional(a, 1, "run observe-check requires LEDGER")?,
+                option(a, "target", "run observe-check requires --target")?,
             )
         }
         "status" => {
@@ -654,9 +663,9 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
     .map_err(|error| map_run_error(error, a.flags.contains_key("json")))?;
     if action == "start" {
         if a.options.contains_key("check-command") {
-            eprintln!("Checked run: acceptance requires a caller-reported passing result for each current worker submission, bound to the frozen check command. The host executes the command; Soulmate records the report.");
+            eprintln!("Checked run: v4 acceptance may use local observe-check or a caller-reported record-check for each current worker submission, bound to the frozen command. Historical v3 runs remain reported-only.");
         } else {
-            eprintln!("Unchecked run: no check-result requirement is configured. Start with --check-command to require caller-reported checks before acceptance.");
+            eprintln!("Unchecked run: no check-result requirement is configured. Start with --check-command to require check evidence before acceptance.");
         }
     }
     if action == "submit" && a.flags.contains_key("event-id") {
@@ -728,9 +737,17 @@ fn print_help() {
 }
 
 fn print_advanced_help() {
-    println!(
+    let help =
         "Soulmate {VERSION}\n\nDo the next change\n  soulmate init --mode portable --root ROOT\n  soulmate brief worker --task TASK --config CONFIG\n  soulmate run start WORKFLOW --goal GOAL --ledger LEDGER [--check-command COMMAND]\n  soulmate run next LEDGER [--text]\n  soulmate run submit AGENT LEDGER --outcome OUTCOME --artifact ARTIFACT [--event-id]\n  soulmate run record-check LEDGER --target EVENT_SHA --check-command COMMAND --exit-code CODE [--duration-ms MS]\n\nWhen work fails or changes\n  soulmate run status LEDGER\n  soulmate run explain LEDGER [--event PROTECTION_EVENT_SHA]\n  soulmate run report LEDGER [LEDGER ...]\n  soulmate run inspect LEDGER\n  soulmate run supersede OLD_LEDGER --workflow WORKFLOW --goal GOAL --ledger NEW_LEDGER\n  --text prints a readable pending assignment; --event-id prints the submitted event hash.\n  Each output flag conflicts with --json; default JSON is unchanged.\n\nOptional surfaces\n  Advanced commands: bind, doctor, plan, verify, profile, migrate, memory (resolve/inspect/lifecycle), away, hooks, hook-protocol, hook-run, version.\n  Run value proof: the host executes the configured check, then reports its actual result with 'run record-check'; use 'run status', 'run explain', and 'run report' for bounded evidence views.\n  Run 'soulmate migrate layout --config CONFIG' to inspect a legacy profile migration, then repeat with --apply. Use 'migrate paths' for canonical harness and state directories.\n  Use 'soulmate run supersede OLD_LEDGER --workflow WORKFLOW --goal GOAL --ledger NEW_LEDGER' after configuration, profile, memory, boundary, or harness-receipt drift."
+    ;
+    println!(
+        "{}",
+        help.replace(
+            "Run value proof: the host executes the configured check, then reports its actual result with 'run record-check'; use 'run status', 'run explain', and 'run report' for bounded evidence views.",
+            "Run value proof: new v4 runs may observe the frozen check locally with 'run observe-check' or record a host report with 'run record-check'; historical v3 runs are reported-only. Use 'run status', 'run explain', and 'run report' for bounded evidence views.",
+        )
     );
+    println!("  Checked v4 runs may use: soulmate run observe-check LEDGER --target EVENT_SHA");
     println!("Run 'soulmate update' to explicitly install the newest allowed release.");
 }
 

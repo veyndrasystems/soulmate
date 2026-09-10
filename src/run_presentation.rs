@@ -22,6 +22,7 @@ pub(crate) fn print_status(status: &HumanStatus) {
         &status.checks.command,
         &status.checks.command_sha256,
         &status.checks.origin,
+        status.checks.observed_capable,
         &status.checks.targets,
     );
     println!("Review: current reviewer outcomes are listed below.");
@@ -48,6 +49,7 @@ pub(crate) fn print_explain(explanation: &HumanExplanation) {
         &explanation.status.checks.command,
         &explanation.status.checks.command_sha256,
         &explanation.status.checks.origin,
+        explanation.status.checks.observed_capable,
         &explanation.status.checks.targets,
     );
     print_reviewers(&explanation.status.reviewers);
@@ -93,6 +95,7 @@ fn print_checks(
     command: &Option<String>,
     command_sha256: &Option<String>,
     origin: &Option<String>,
+    observed_capable: bool,
     targets: &[HumanCheckTarget],
 ) {
     match state {
@@ -100,11 +103,35 @@ fn print_checks(
             println!("Host-reported check: not configured (unchecked run)");
         }
         _ => {
-            println!(
-                "Host-reported check: {}; not executed by Soulmate; origin={}",
-                check_state(*state),
-                optional(origin.as_deref(), "unknown")
-            );
+            if targets.is_empty() || origin.is_none() {
+                println!("Host-reported check: not observed; not executed by Soulmate");
+            } else if !observed_capable {
+                println!(
+                    "Host-reported check: {}; not executed by Soulmate; origin={}",
+                    check_state(*state),
+                    optional(origin.as_deref(), "unknown")
+                );
+            } else if *state == HumanCheckState::NotObserved {
+                println!(
+                    "Host-reported check: not observed; not executed by Soulmate; local observe-check is available; origin={}",
+                    optional(origin.as_deref(), "unknown")
+                );
+            } else if targets
+                .iter()
+                .all(|target| target.acquisition.as_deref() != Some("observed"))
+            {
+                println!(
+                    "Host-reported check: {}; not executed by Soulmate; acquisition is shown per target; origin={}",
+                    check_state(*state),
+                    optional(origin.as_deref(), "unknown")
+                );
+            } else {
+                println!(
+                    "Configured check: {}; acquisition is shown per target; origin={}",
+                    check_state(*state),
+                    optional(origin.as_deref(), "unknown")
+                );
+            }
             println!(
                 "  Frozen command: {}",
                 optional(command.as_deref(), "missing")
@@ -118,14 +145,46 @@ fn print_checks(
                     .worker
                     .as_ref()
                     .map_or_else(|| "unknown".to_owned(), identity);
+                if target.result.is_none() {
+                    println!(
+                        "  Check target: worker={} event={} status={} reported exit={} check={}",
+                        worker,
+                        optional(target.target_event_sha256.as_deref(), "missing"),
+                        inert(&target.status),
+                        target
+                            .exit_code
+                            .map_or_else(|| "missing".to_owned(), |exit| exit.to_string()),
+                        optional(target.check_event_sha256.as_deref(), "missing")
+                    );
+                    continue;
+                }
+                if target.acquisition.as_deref() == Some("reported") {
+                    println!(
+                        "  Check target: worker={} event={} status={} reported exit={} acquisition=reported result={} check={}",
+                        worker,
+                        optional(target.target_event_sha256.as_deref(), "missing"),
+                        inert(&target.status),
+                        target
+                            .exit_code
+                            .map_or_else(|| "missing".to_owned(), |exit| exit.to_string()),
+                        target.result.as_deref().unwrap_or("missing"),
+                        optional(target.check_event_sha256.as_deref(), "missing")
+                    );
+                    continue;
+                }
+                let acquisition = target.acquisition.as_deref().unwrap_or("unknown");
+                let result = target.result.clone().unwrap_or_else(|| {
+                    target
+                        .exit_code
+                        .map_or_else(|| "missing".to_owned(), |exit| format!("exit code {exit}"))
+                });
                 println!(
-                    "  Check target: worker={} event={} status={} reported exit={} check={}",
+                    "  Check target: worker={} event={} status={} acquisition={} result={} check={}",
                     worker,
                     optional(target.target_event_sha256.as_deref(), "missing"),
                     inert(&target.status),
-                    target
-                        .exit_code
-                        .map_or_else(|| "missing".to_owned(), |exit| exit.to_string()),
+                    acquisition,
+                    result,
                     optional(target.check_event_sha256.as_deref(), "missing")
                 );
             }
@@ -227,13 +286,30 @@ fn print_protection(label: &str, protection: &HumanProtection) {
             .worker
             .as_ref()
             .map_or_else(|| "unknown".to_owned(), identity);
+        if item.result.is_none() && item.acquisition.as_deref() == Some("reported") {
+            println!(
+                "  Evidence: worker={} target={} status={} reported exit={} check={}",
+                worker,
+                optional(item.target_event_sha256.as_deref(), "missing"),
+                inert(&item.status),
+                item.exit_code
+                    .map_or_else(|| "missing".to_owned(), |exit| exit.to_string()),
+                optional(item.check_event_sha256.as_deref(), "missing")
+            );
+            continue;
+        }
+        let acquisition = item.acquisition.as_deref().unwrap_or("unknown");
+        let result = item.result.clone().unwrap_or_else(|| {
+            item.exit_code
+                .map_or_else(|| "missing".to_owned(), |exit| format!("exit code {exit}"))
+        });
         println!(
-            "  Evidence: worker={} target={} status={} reported exit={} check={}",
+            "  Evidence: worker={} target={} status={} acquisition={} result={} check={}",
             worker,
             optional(item.target_event_sha256.as_deref(), "missing"),
             inert(&item.status),
-            item.exit_code
-                .map_or_else(|| "missing".to_owned(), |exit| exit.to_string()),
+            acquisition,
+            result,
             optional(item.check_event_sha256.as_deref(), "missing")
         );
     }

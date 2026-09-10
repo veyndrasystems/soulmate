@@ -163,7 +163,7 @@ soulmate run status "$ledger" --config soulmate.json
 soulmate run next "$ledger" --text --config soulmate.json
 ```
 
-The shell captures the successful submission's event ID **before** executing
+This historical v3 procedure captures the successful submission's event ID **before** executing
 the frozen command. A failed submission stops this sequence. The command text
 and `--target` are explicit; Soulmate does not select the latest submission or
 execute the command. Every current worker needs its own qualifying report.
@@ -259,7 +259,9 @@ recorded bytes. Intentional governing-input changes need explicit
 [supersession](../REFERENCE.md#run-and-recovery) where permitted; accepted and
 rejected predecessors remain final.
 
-After updating the binary, refresh owned project skills with `soulmate init
+For unreleased v4 source work, `run observe-check` can execute only the frozen
+command locally; the published rc4 installer remains v3/report-only. After
+updating the binary, refresh owned project skills with `soulmate init
 --refresh-skills --root .` and reload the host. Keep a binary compatible with
 run-event format 3 for checked-ledger rollback. Remove optional hooks before
 removing the binary; [removal](../REFERENCE.md#removal) leaves local records and

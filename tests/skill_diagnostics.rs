@@ -45,6 +45,27 @@ fn hash(bytes: &[u8]) -> String {
     output
 }
 
+#[test]
+fn cache_guidance_keeps_host_and_session_layers_unverified() {
+    let guidance = String::from_utf8_lossy(SOULMATE_SKILL);
+    for phrase in [
+        "installed CLI bytes",
+        "host's active materialization/cache",
+        "current session",
+        "active-session reload",
+        "supported refresh",
+        "if any selected host is stale",
+        "inactive cache may be labeled historical",
+        "current session without reload evidence remains unverified",
+        "diagnostic guidance only",
+    ] {
+        assert!(
+            guidance.contains(phrase),
+            "missing cache guidance: {phrase}"
+        );
+    }
+}
+
 fn local_project(label: &str) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
     let base = temp(label);
     let product = base.join("product");

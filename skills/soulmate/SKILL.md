@@ -160,6 +160,11 @@ one-worker checked run:
    `checkPolicy.command`, never a submit response field or scalar `--event-id`.
 4. Execute exact packet command in host; call `run record-check` with real exit
    and worker event as target. Soulmate records caller result; never executes.
+   For a newly created v4 checked run, `run observe-check LEDGER --target
+   EVENT_SHA` may launch only the frozen policy command locally from
+   `ProductRoot`; it accepts no command, environment, shell, directory,
+   duration, or result override. Local observation remains check evidence, not
+   review or lead acceptance; v3 ledgers remain on the reported path.
 5. After successful record-check for exact worker target in this context, retain
    result; verify/invoke retained native reviewer assignment with upstream/check
    evidence; submit finding. Invoke configured lead in the same
@@ -228,6 +233,23 @@ soulmate run record-check LEDGER --target worker_event \
 Use current paths/actor and frozen command. Failed submission stops. Target
 current worker completion, never artifact hash, earlier event, or automatic
 latest lookup. Passing evidence grants no review approval or acceptance.
+
+### Cache and session uncertainty
+
+Keep these observations separate: installed CLI bytes, canonical declaration and
+lock, each selected host's active materialization/cache, and instructions already
+loaded in the current session. Report every layer as current, stale, inactive
+historical, unavailable, or unverified, and qualify success by its scope. A
+global plugin update or one host's cache does not establish convergence elsewhere
+or in this session. Resolve the active host path before deletion; use only the
+host's supported refresh under existing authority. On-disk state never proves an
+active-session reload; treat a reload or new session as separate evidence.
+
+Deterministic split-state rubric: if any selected host is stale, the overall
+update is not current; an old inactive cache may be labeled historical; and a
+current session without reload evidence remains unverified. Never summarize
+these mixed states as an unqualified success. This is diagnostic guidance only:
+do not inventory or mutate caches, and do not infer actual-agent behavior.
 
 Use `run status` for current claim, check, review, acceptance, and read-only
 next action. `run next LEDGER --text --config CONFIG` returns validated

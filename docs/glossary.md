@@ -14,6 +14,8 @@ they are not extra steps to memorize.
 | Artifact | A referenced result document | Its recorded bytes must remain unchanged. Product files can change in later attempts. |
 | Ledger / run | The task's inspectable sequence of records | It is not a recovered host conversation. |
 | Rework | Another attempt within the frozen task | Use fresh result documents, checks, and review. |
+| Observed check | v4 source evidence from executing the frozen command in ProductRoot | It is available only in v4 and records an exit or signal locally; it still needs review and acceptance. |
+| Reported check | Caller-supplied result bound to the frozen command | It is the only check route in v3 and one permitted route in v4; it records what was reported, not proof that the caller ran the command. |
 | Supersede | An explicit successor after governing inputs change | The predecessor remains inspectable; final runs stay final. |
 | Declared boundary | The task's stated file/command limits | The host owns execution permissions; this is not a sandbox. |
 | ControlRoot | Configuration and profiles directory | Portable mode puts it in the project; local mode keeps it elsewhere. |

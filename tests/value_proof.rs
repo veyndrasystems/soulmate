@@ -1042,7 +1042,7 @@ fn checked_supersession_inherits_policy_and_seals_predecessor() {
         &root,
         &["run", "inspect", new, "--json", "--config", "soulmate.json"],
     ));
-    assert_eq!(successor["events"][0]["version"], 3);
+    assert_eq!(successor["events"][0]["version"], 4);
     assert_eq!(successor["events"][0]["checkPolicy"]["command"], CHECK);
     assert_eq!(successor["events"][0]["checkPolicy"]["origin"], "synthetic");
     assert!(root.join(".soulmate/runs/old.jsonl.supersede").is_file());

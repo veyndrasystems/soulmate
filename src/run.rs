@@ -15,6 +15,9 @@ use run_ledger::{
 };
 use serde_json::{json, Value};
 use std::fs;
+use std::io;
+use std::process::{Command, Stdio};
+use std::time::Instant;
 
 pub fn start(
     loaded: &Loaded,
@@ -90,7 +93,7 @@ pub fn start_with_policy(
             None
         };
         let version = if check_policy.is_some() {
-            3
+            4
         } else if reference.is_some() {
             2
         } else {
@@ -168,13 +171,11 @@ pub fn submit(
             .ok_or_else(|| format!("agent '{agent}' is not currently pending"))?;
         let artifact_value = crate::run_artifact::evidence(loaded, artifact_root, artifact)?;
         let last = events.last().ok_or("run ledger has no head event")?;
-        let version = if state.get("checkPolicy").is_some() {
-            3
-        } else if state.get("harnessReceipt").is_some() {
-            2
-        } else {
-            1
-        };
+        // Preserve the ledger's historical event version. Optional fields
+        // must not silently upgrade a v3 checked run on its next submission.
+        let version = state["version"]
+            .as_u64()
+            .ok_or("run state is missing version")?;
         if assignment["role"] == "lead" && outcome == "accepted" {
             let assessment = crate::run_value::check_guard(&state)?;
             if assessment.is_blocked() {
@@ -281,8 +282,10 @@ pub fn record_check(
         }
         crate::run_value::validate_check_target(&state, target)?;
         let last = events.last().ok_or("run ledger has no event head")?;
-        let mut value = json!({
-            "version": 3,
+        let version = state["version"].as_u64().unwrap_or(3);
+        let mut value = if version == 4 {
+            json!({
+            "version": 4,
             "kind": "run",
             "producer": crate::producer::evidence(),
             "action": "check",
@@ -291,10 +294,27 @@ pub fn record_check(
             "checkCommand": check_command,
             "checkCommandSha256": crate::hash::text(check_command),
             "origin": policy.origin.as_str(),
-            "exitCode": exit_code,
+            "acquisition": "reported",
+            "result": {"kind": "exit", "code": exit_code},
             "previousEventSha256": last["eventSha256"],
             "timestamp": nondecreasing(&last["timestamp"])?
-        });
+            })
+        } else {
+            json!({
+                "version": 3,
+                "kind": "run",
+                "producer": crate::producer::evidence(),
+                "action": "check",
+                "runId": state["runId"],
+                "targetEventSha256": target,
+                "checkCommand": check_command,
+                "checkCommandSha256": crate::hash::text(check_command),
+                "origin": policy.origin.as_str(),
+                "exitCode": exit_code,
+                "previousEventSha256": last["eventSha256"],
+                "timestamp": nondecreasing(&last["timestamp"])?
+            })
+        };
         value["durationMs"] = duration_ms.map_or(Value::Null, |duration| json!(duration));
         let event = run_state::make_event(value);
         let mut all = events.clone();
@@ -309,6 +329,141 @@ pub fn record_check(
             "checks": crate::run_value::status(&next_state, Some(true))?["checks"]
         }))
     })
+}
+
+/// Execute the frozen policy command and bind its locally observed result to
+/// the exact current worker completion.  No caller-supplied command/result
+/// fields are accepted.
+pub fn observe_check(loaded: &Loaded, ledger: &str, target: &str) -> Result<Value, String> {
+    let path = ledger_path(&loaded.state_root, ledger, false)?;
+    let targets = [path.path.as_path(), path.lock.as_path()];
+    crate::git_preflight::refuse_tracked_targets(&loaded.state_root, &targets)?;
+    with_lock(&path, || {
+        crate::git_preflight::refuse_tracked_targets(&loaded.state_root, &targets)?;
+        if claim_path(&path).exists() {
+            return Err("run has been superseded; no mutation was made".into());
+        }
+        let (_, events, source) = load_at(loaded, &path)?;
+        let state = run_state::reduce(&events)?;
+        if state["version"] != 4 {
+            return Err("observe-check requires a newly created v4 checked run".into());
+        }
+        if state["status"] != "running" {
+            return Err("run has already reached a terminal state; no mutation was made".into());
+        }
+        assert_no_drift(loaded, &state)?;
+        crate::run_artifact::assert_current(loaded, &state)?;
+        predecessor(loaded, &events[0])?;
+        let policy_value = state
+            .get("checkPolicy")
+            .ok_or("run has no configured check policy")?;
+        let policy = crate::run_value::policy_from_value(policy_value, 0)
+            .map_err(|error| error.replacen("line 0", "state", 1))?;
+        crate::run_value::validate_check_target(&state, target)?;
+
+        let started = Instant::now();
+        let child_stderr = child_stderr_stdio()?;
+        let status = Command::new("sh")
+            .arg("-c")
+            .arg(&policy.command)
+            .arg("soulmate-observe-check")
+            .current_dir(&loaded.product_root)
+            .stdout(child_stderr)
+            .stderr(Stdio::inherit())
+            .status()
+            .map_err(|error| format!("check command could not be launched: {error}"))?;
+        let duration_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        let result = observed_result(&status)?;
+
+        let (_, current_events, current_source) = load_at(loaded, &path)?;
+        let current_state = run_state::reduce(&current_events)?;
+        if claim_path(&path).exists() {
+            return Err("run has been superseded; no mutation was made".into());
+        }
+        if current_source != source {
+            return Err("run ledger changed while observing; no mutation was made".into());
+        }
+        if current_state["version"] != 4 || current_state["status"] != "running" {
+            return Err("run changed while observing; no mutation was made".into());
+        }
+        assert_no_drift(loaded, &current_state)?;
+        crate::run_artifact::assert_current(loaded, &current_state)?;
+        predecessor(loaded, &current_events[0])?;
+        let current_policy = crate::run_value::policy_from_value(
+            current_state
+                .get("checkPolicy")
+                .ok_or("run has no configured check policy")?,
+            0,
+        )
+        .map_err(|error| error.replacen("line 0", "state", 1))?;
+        if current_policy != policy {
+            return Err("check policy changed while observing; no mutation was made".into());
+        }
+        crate::run_value::validate_check_target(&current_state, target)?;
+        let last = current_events
+            .last()
+            .ok_or("run ledger has no event head")?;
+        let event = run_state::make_event(json!({
+            "version": 4,
+            "kind": "run",
+            "producer": crate::producer::evidence(),
+            "action": "check",
+            "runId": current_state["runId"],
+            "targetEventSha256": target,
+            "checkCommand": policy.command,
+            "checkCommandSha256": policy.command_sha256,
+            "origin": policy.origin.as_str(),
+            "acquisition": "observed",
+            "result": result,
+            "durationMs": duration_ms,
+            "previousEventSha256": last["eventSha256"],
+            "timestamp": nondecreasing(&last["timestamp"])?
+        }));
+        let mut all = current_events;
+        all.push(event.clone());
+        let next_state = run_state::reduce(&all)?;
+        append(&path, &event, false, &current_source)?;
+        Ok(json!({
+            "valid": true,
+            "event": event,
+            "runId": next_state["runId"],
+            "status": next_state["status"],
+            "checks": crate::run_value::status(&next_state, Some(true))?["checks"]
+        }))
+    })
+}
+
+fn observed_result(status: &std::process::ExitStatus) -> Result<Value, String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return Ok(json!({"kind": "signal", "signal": signal}));
+        }
+    }
+    status
+        .code()
+        .map(|code| json!({"kind": "exit", "code": code as u64}))
+        .ok_or_else(|| "check command ended indeterminately; no mutation was made".into())
+}
+
+fn child_stderr_stdio() -> Result<Stdio, String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::{FromRawFd, RawFd};
+        let fd: RawFd = unsafe { libc::dup(libc::STDERR_FILENO) };
+        if fd < 0 {
+            return Err(format!(
+                "check command stderr could not be connected: {}",
+                io::Error::last_os_error()
+            ));
+        }
+        Ok(unsafe { Stdio::from(std::fs::File::from_raw_fd(fd)) })
+    }
+    #[cfg(not(unix))]
+    {
+        Err("observe-check requires a POSIX host".into())
+    }
 }
 
 fn parse_nonnegative(option: &str, value: &str) -> Result<u64, String> {
@@ -549,7 +704,7 @@ pub fn supersede_with_policy(
             "configSha256": claim.value["oldConfigSha256"]
         });
         let version = if check_policy.is_some() {
-            3
+            4
         } else if harness_reference.is_some() {
             2
         } else {

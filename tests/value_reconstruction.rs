@@ -130,8 +130,9 @@ fn event_shapes_rejects_closed_all_of_fragment_missing_common_properties() {
 
 fn reconstruct_bundle(root: &Path) -> Result<BundleSnapshot, String> {
     let (entries, fixtures) = validate_manifest(root)?;
-    let schema_bytes = manifest_bytes(root, &entries, SCHEMA_PATH)?;
-    let schema = parse_json(&schema_bytes, SCHEMA_PATH)?;
+    let schema_path = "schema/run-event-v4.schema.json";
+    let schema_bytes = manifest_bytes(root, &entries, schema_path)?;
+    let schema = parse_json(&schema_bytes, schema_path)?;
     let shapes = event_shapes(&schema)?;
     let blocked_bytes = manifest_bytes(root, &entries, BLOCKED_PATH)?;
     let final_bytes = manifest_bytes(root, &entries, FINAL_PATH)?;
@@ -256,6 +257,7 @@ fn is_outcome(path: &str) -> bool {
     matches!(
         path,
         BASELINE_PATH
+            | "schema/run-event-v4.schema.json"
             | "schema/value-proof-v1.schema.json"
             | "schema/value-report-v1.schema.json"
             | "result.json"
@@ -312,8 +314,10 @@ fn collect_files(
 }
 
 fn event_shapes(schema: &Value) -> Result<EventShapes, String> {
-    if schema.get(FORMAT_MARKER) != Some(&Value::from(3))
-        || schema.get("type") != Some(&Value::from("object"))
+    if !matches!(
+        schema.get(FORMAT_MARKER).and_then(Value::as_u64),
+        Some(3 | 4)
+    ) || schema.get("type") != Some(&Value::from("object"))
     {
         return Err("exported run-event schema is not version 3".into());
     }
@@ -488,7 +492,7 @@ fn validate_event(
     label: &str,
 ) -> Result<(), String> {
     let object = object(event, label)?;
-    if event.get("version") != Some(&Value::from(3))
+    if !matches!(event.get("version").and_then(Value::as_u64), Some(3 | 4))
         || event.get("kind") != Some(&Value::from("run"))
     {
         return Err(format!("{label} is not a version 3 run event"));
@@ -590,6 +594,18 @@ fn validate_submit(event: &Value, label: &str) -> Result<(), String> {
 }
 
 fn validate_check(event: &Value, label: &str) -> Result<(), String> {
+    if event["version"] == 4 {
+        if !valid_hash(event["targetEventSha256"].as_str().unwrap_or(""))
+            || event["checkCommand"].as_str().map_or(true, str::is_empty)
+            || !valid_hash(event["checkCommandSha256"].as_str().unwrap_or(""))
+            || event["origin"] != "synthetic"
+            || !matches!(event["acquisition"].as_str(), Some("reported" | "observed"))
+            || event["result"].get("kind").is_none()
+        {
+            return Err(format!("{label} has invalid check evidence"));
+        }
+        return Ok(());
+    }
     if !valid_hash(event["targetEventSha256"].as_str().unwrap_or(""))
         || event["checkCommand"].as_str().map_or(true, str::is_empty)
         || !valid_hash(event["checkCommandSha256"].as_str().unwrap_or(""))
@@ -602,6 +618,25 @@ fn validate_check(event: &Value, label: &str) -> Result<(), String> {
 }
 
 fn validate_protect(event: &Value, label: &str) -> Result<(), String> {
+    if event["version"] == 4 {
+        let evidence = event["checkEvidence"]
+            .as_array()
+            .filter(|evidence| !evidence.is_empty())
+            .ok_or_else(|| format!("{label} has no check evidence"))?;
+        if event["reason"] != "check_failed" || event["origin"] != "synthetic" {
+            return Err(format!("{label} has invalid protection evidence"));
+        }
+        for item in evidence {
+            if item["status"] != "failed"
+                || !valid_hash(item["targetEventSha256"].as_str().unwrap_or(""))
+                || !valid_hash(item["checkEventSha256"].as_str().unwrap_or(""))
+                || item["result"].get("kind").is_none()
+            {
+                return Err(format!("{label} has invalid failed-check evidence"));
+            }
+        }
+        return Ok(());
+    }
     if event["stage"].as_u64().map_or(true, |value| value == 0)
         || event["attempt"].as_u64().map_or(true, |value| value == 0)
         || event["actor"].as_str().map_or(true, str::is_empty)
@@ -684,7 +719,7 @@ fn reconstruct_workflow(
     assert_check(check_one, worker_one, command, 1)?;
     if protection["checkEvidence"][0]["targetEventSha256"] != worker_one["eventSha256"]
         || protection["checkEvidence"][0]["checkEventSha256"] != check_one["eventSha256"]
-        || protection["checkEvidence"][0]["exitCode"] != 1
+        || check_exit_code(&protection["checkEvidence"][0]) != Some(1)
         || has_acceptance(blocked)
     {
         return Err("failed-check protection did not leave a pending lead decision".into());
@@ -764,11 +799,19 @@ fn assert_check(
         || event["checkCommand"] != command
         || event["checkCommandSha256"] != sha256(command.as_bytes())
         || event["origin"] != "synthetic"
-        || event["exitCode"] != exit_code
+        || check_exit_code(event) != Some(exit_code)
     {
         return Err(format!("check does not bind to worker exit {exit_code}"));
     }
     Ok(())
+}
+
+fn check_exit_code(event: &Value) -> Option<u64> {
+    event["exitCode"].as_u64().or_else(|| {
+        (event["result"]["kind"] == "exit")
+            .then(|| event["result"]["code"].as_u64())
+            .flatten()
+    })
 }
 
 fn verify_artifacts(events: &[Value], fixtures: &BTreeMap<String, Vec<u8>>) -> Result<(), String> {

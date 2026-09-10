@@ -166,6 +166,24 @@ soulmate run record-check .soulmate/runs/checked.jsonl \
 soulmate run status .soulmate/runs/checked.jsonl --config soulmate.json
 ```
 
+New checked runs in unreleased source work use run-event format 4. The
+published `v0.14.0-rc.4` installer remains v3/report-only and does not include
+`observe-check`. After the worker submission, the
+frozen command can instead be run and recorded by Soulmate without accepting a
+caller command or result override:
+
+```sh
+soulmate run observe-check .soulmate/runs/checked.jsonl \
+  --target "$worker_event" --config soulmate.json
+```
+
+This local observation runs synchronously in the configured ProductRoot with
+the invoking environment and permissions. It keeps command output off JSON
+stdout, records normal exits and POSIX signals as distinct results, and writes
+no check event when launch or durable binding fails. A local observation is
+still check evidence: review and lead acceptance remain separate. Existing v3
+ledgers keep the caller-reported `record-check` representation.
+
 This fragment assumes the worker is pending and has written that fresh result
 file. Use the project's actual command consistently at start and execution.
 `--event-id` returns only the successfully appended submission hash and a newline;
@@ -197,7 +215,7 @@ soulmate run report .soulmate/runs/checked.jsonl --config soulmate.json
 soulmate run report .soulmate/runs/checked.jsonl --json --config soulmate.json
 ```
 
-Checked runs use run-event version 3. A checked successor retains its frozen
+Historical checked runs use run-event version 3. A checked successor retains its frozen
 check policy and source category. Ordinary starts keep v1, or v2 when a harness
 receipt is supplied; old ledgers are not rewritten. New readers inspect the
 frozen old fixtures. Old binaries reject v3, so retain a supporting binary for
@@ -234,6 +252,17 @@ soulmate init --refresh-skills --root PATH
 The installer verifies the tagged archive checksum and stages the replacement
 before switching the binary. It never rewrites project configuration or skill
 copies; refresh remains a separate, reviewable project action.
+
+### Cache and session uncertainty
+
+Diagnostic and update reports keep installed CLI bytes, canonical declaration
+and lock, each selected host's active materialization/cache, and instructions
+already loaded in the current session as separate layers. Report each as
+current, stale, inactive historical, unavailable, or unverified, and qualify
+success by scope. A global plugin update or one host's cache does not prove
+convergence elsewhere or in the current session. Resolve the active host path
+before deletion, use only supported host-specific refresh, and treat reload or
+new-session evidence separately from on-disk state.
 
 ### Conversational update notice
 

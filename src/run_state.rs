@@ -16,6 +16,7 @@ pub fn reduce(events: &[Value]) -> Result<Value, String> {
     validate_start(&events[0], 1)?;
     let first = &events[0];
     let mut state = json!({
+        "version": first["version"],
         "runId": first["runId"], "workflow": first["workflow"], "goal": first["goal"],
         "configSha256": first["configSha256"], "plan": first["plan"], "status": "running",
         "currentStage": 1, "attempt": 1, "submissions": [], "checks": [],
@@ -46,7 +47,7 @@ pub fn validate_event(event: &Value, previous: Option<&Value>, line: usize) -> R
         .as_object()
         .ok_or_else(|| format!("invalid run ledger line {line}: event must be an object"))?;
     let version = event["version"].as_u64();
-    if !matches!(version, Some(1..=3)) || event["kind"] != "run" {
+    if !matches!(version, Some(1..=4)) || event["kind"] != "run" {
         return Err(format!(
             "invalid run ledger line {line}: invalid event header"
         ));
@@ -59,7 +60,7 @@ pub fn validate_event(event: &Value, previous: Option<&Value>, line: usize) -> R
     if event
         .get("producer")
         .is_some_and(|producer| !crate::producer::valid(producer))
-        || (matches!(version, Some(2 | 3))
+        || (matches!(version, Some(2..=4))
             && !event.get("producer").is_some_and(crate::producer::valid))
     {
         return Err(format!("invalid run ledger line {line}: invalid producer"));
@@ -78,7 +79,7 @@ pub fn validate_event(event: &Value, previous: Option<&Value>, line: usize) -> R
             "invalid run ledger line {line}: ledger must begin with start"
         ));
     }
-    if version != Some(3) && matches!(action, "check" | "protect") {
+    if !matches!(version, Some(3 | 4)) && matches!(action, "check" | "protect") {
         return Err(format!(
             "invalid run ledger line {line}: value-proof actions require version 3"
         ));
@@ -134,7 +135,7 @@ pub fn validate_start(event: &Value, line: usize) -> Result<(), String> {
 }
 
 fn validate_start_version(event: &Value, line: usize, version: u64) -> Result<(), String> {
-    if !matches!(version, 1..=3) {
+    if !matches!(version, 1..=4) {
         return Err(format!(
             "invalid run ledger line {line}: invalid event version"
         ));
@@ -236,9 +237,9 @@ fn validate_start_version(event: &Value, line: usize, version: u64) -> Result<()
         }
         validate_harness_receipt(event.get("harnessReceipt"), line)?;
     }
-    if version == 3 {
+    if matches!(version, 3 | 4) {
         let policy = event.get("checkPolicy").ok_or_else(|| {
-            format!("invalid run ledger line {line}: v3 start requires checkPolicy")
+            format!("invalid run ledger line {line}: checked start requires checkPolicy")
         })?;
         crate::run_value::policy_from_value(policy, line)?;
         let has_worker = stages.iter().any(|stage| {
@@ -253,7 +254,7 @@ fn validate_start_version(event: &Value, line: usize, version: u64) -> Result<()
         }
     } else if event.get("checkPolicy").is_some() {
         return Err(format!(
-            "invalid run ledger line {line}: checkPolicy requires version 3"
+            "invalid run ledger line {line}: checkPolicy requires checked event version"
         ));
     }
     Ok(())
@@ -363,6 +364,9 @@ fn apply_event(state: &mut Value, event: &Value) -> Result<(), String> {
 }
 
 fn apply_check(state: &mut Value, event: &Value) -> Result<(), String> {
+    if state["status"] != "running" {
+        return Err("run has already reached a terminal state".into());
+    }
     crate::run_value::validate_check_against_state(state, event, 0)
         .map_err(|error| error.replacen("line 0", "state", 1))?;
     state["checks"]
@@ -510,7 +514,7 @@ fn reject_unknown(
         if version == 2 {
             allowed.push("harnessReceipt");
         }
-        if version == 3 {
+        if matches!(version, 3 | 4) {
             allowed.push("harnessReceipt");
             allowed.push("checkPolicy");
         }
@@ -540,6 +544,29 @@ fn reject_unknown(
             "eventSha256",
         ]
     } else if action == "check" {
+        if version == 4 {
+            return reject_unknown_fields(
+                object,
+                &[
+                    "version",
+                    "kind",
+                    "producer",
+                    "action",
+                    "runId",
+                    "targetEventSha256",
+                    "checkCommand",
+                    "checkCommandSha256",
+                    "origin",
+                    "acquisition",
+                    "result",
+                    "durationMs",
+                    "previousEventSha256",
+                    "timestamp",
+                    "eventSha256",
+                ],
+                line,
+            );
+        }
         &[
             "version",
             "kind",
@@ -557,6 +584,30 @@ fn reject_unknown(
             "eventSha256",
         ]
     } else {
+        if version == 4 {
+            return reject_unknown_fields(
+                object,
+                &[
+                    "version",
+                    "kind",
+                    "producer",
+                    "action",
+                    "runId",
+                    "stage",
+                    "attempt",
+                    "actor",
+                    "role",
+                    "attemptedOutcome",
+                    "reason",
+                    "checkEvidence",
+                    "origin",
+                    "previousEventSha256",
+                    "timestamp",
+                    "eventSha256",
+                ],
+                line,
+            );
+        }
         &[
             "version",
             "kind",
@@ -576,6 +627,21 @@ fn reject_unknown(
             "eventSha256",
         ]
     };
+    object
+        .keys()
+        .find(|key| !allowed.contains(&key.as_str()))
+        .map_or(Ok(()), |key| {
+            Err(format!(
+                "invalid run ledger line {line}: unknown field '{key}'"
+            ))
+        })
+}
+
+fn reject_unknown_fields(
+    object: &Map<String, Value>,
+    allowed: &[&str],
+    line: usize,
+) -> Result<(), String> {
     object
         .keys()
         .find(|key| !allowed.contains(&key.as_str()))

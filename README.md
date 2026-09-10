@@ -108,7 +108,7 @@ the accepted synthetic run. A real running task may leave a pending review or
 assignment for your existing host to retrieve; carrying it out requires the
 host’s native agent tools. See [host setup](docs/onboarding.md#ask-your-existing-host-to-manage-the-run).
 
-In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.
+In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact. The public mapping is: v3 supports caller-reported `record-check` only; v4 supports both reported `record-check` and observed `observe-check`. The published `v0.14.0-rc.4` installer lacks only the unreleased v4/`observe-check` source work described here. In that source work, `soulmate run observe-check LEDGER --target EVENT_SHA` executes only the frozen command in ProductRoot and records its local result. Either kind of v4 check evidence, like v3 evidence, still requires review and lead acceptance.
 
 **Agree on the check before work starts.** Soulmate freezes that command and
 ties each reported result to the submitted work. A reported failure stays
@@ -171,10 +171,11 @@ stay final. The record recovers task evidence, not the host conversation.
 
 ## What the record establishes
 
-Check results are **caller reports**. Soulmate binds the supplied command and
-exit code to a worker submission; the host executes the check. Reviewer
-`approved` and the configured lead's `accepted` remain separate. Your tests
-and CI still determine what was actually exercised. See the
+Check results are either **locally observed** or **caller-reported**. v3 is
+caller-reported-only; v4 permits both routes. Soulmate binds either result to a
+worker submission; a report does not prove that the host ran the command.
+Reviewer `approved` and the configured lead's `accepted` remain separate. Your
+tests and CI still determine what was actually exercised. See the
 [authority boundary](REFERENCE.md#authority-boundary).
 
 Artifact checks cover recorded documents, not every product file or its test
@@ -199,7 +200,9 @@ reuses the installer checksum and atomic replacement, and verifies the installed
 binary. This is not an attestation or provenance claim.
 The new preview's `check` shows the running binary and managed-skill hashes;
 a difference is a prompt to inspect versions, not proof of incompatibility.
-Checked ledgers use run-event format 3; use the
+The published `v0.14.0-rc.4` installer creates v3 checked ledgers; only the
+unreleased source work creates v4 checked ledgers. Existing v3 ledgers remain
+readable. Use the
 [format and reader map](CHANGELOG.md#public-tags-and-format-readers) on rollback.
 Removing the binary leaves configuration, skills, receipts, ledgers, and
 artifacts. Remove optional hooks first while the binary is available.
