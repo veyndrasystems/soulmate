@@ -203,12 +203,13 @@ fn ordinary_turns_and_invalid_or_unconfigured_inputs_remain_silent() {
 fn session_update_context_is_fresh_cache_bound_and_subagent_silent() {
     let fixture = Fixture::new("portable");
     let cache = fixture.base.join("cache/soulmate");
+    let next = format!("v{}.{}.{}-rc.{}", 0, 15, 0, 3);
     fs::create_dir_all(&cache).unwrap();
     fs::write(
         cache.join("update.json"),
         format!(
-            "{{\"checked_at\":{},\"channel\":\"all\",\"latest\":\"v0.15.0-rc.2\"}}",
-            chrono::Utc::now().timestamp()
+            "{{\"checked_at\":{},\"channel\":\"all\",\"latest\":\"{next}\"}}",
+            chrono::Utc::now().timestamp(),
         ),
     )
     .unwrap();
@@ -305,6 +306,7 @@ fn failed_session_lookup_backs_off_and_opt_out_stays_silent() {
 fn stale_session_cache_refreshes_with_local_fake_curl() {
     let fixture = Fixture::new("portable");
     let cache = fixture.base.join("cache/soulmate");
+    let next = format!("v{}.{}.{}-rc.{}", 0, 15, 0, 3);
     fs::create_dir_all(&cache).unwrap();
     fs::write(
         cache.join("update.json"),
@@ -316,8 +318,8 @@ fn stale_session_cache_refreshes_with_local_fake_curl() {
     fs::write(
         &curl,
         format!(
-            "#!/bin/sh\nprintf x >> '{}'\nout=\"\"; for arg in \"$@\"; do out=\"$arg\"; done\nprintf '%s' '[{{\"tag_name\":\"v0.15.0-rc.2\",\"draft\":false,\"prerelease\":true}}]' > \"$out\"\n",
-            calls.display()
+            "#!/bin/sh\nprintf x >> '{}'\nout=\"\"; for arg in \"$@\"; do out=\"$arg\"; done\nprintf '%s' '[{{\"tag_name\":\"{next}\",\"draft\":false,\"prerelease\":true}}]' > \"$out\"\n",
+            calls.display(),
         ),
     )
     .unwrap();

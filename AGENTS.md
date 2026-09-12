@@ -1,4 +1,9 @@
-# Soulmate contributor instructions
+# Instructions for coding agents contributing to Soulmate
+
+This file is for external coding agents modifying the Soulmate repository. It
+is not part of the installed end-user workflow or a maintainer's personal agent
+configuration. Human contributors should start with [CONTRIBUTING.md](CONTRIBUTING.md);
+if they use a coding agent, these repository-specific rules apply to that agent.
 
 Read `README.md` before changing the project.
 

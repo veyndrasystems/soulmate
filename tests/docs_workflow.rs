@@ -69,6 +69,8 @@ fn checked_work_journey_links_resolve_in_the_checkout() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     for source in [
         "README.md",
+        "CONTRIBUTING.md",
+        "AGENTS.md",
         "REFERENCE.md",
         "docs/onboarding.md",
         "docs/first-checked-run.md",
@@ -76,6 +78,92 @@ fn checked_work_journey_links_resolve_in_the_checkout() {
         "skills/soulmate/SKILL.md",
     ] {
         check_links(root, source).unwrap();
+    }
+}
+
+#[test]
+fn contribution_audiences_and_coffee_contract_stay_separate() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let read = |file: &str| fs::read_to_string(root.join(file)).unwrap();
+    let coffee = read("skills/coffee/SKILL.md");
+    let agents = read("AGENTS.md");
+    let contributing = read("CONTRIBUTING.md");
+
+    for private_stack_term in [
+        "Repomix",
+        "CodeGraph",
+        "Ponytail",
+        "Grill-Me",
+        "role-perspectives",
+        "qa-engineer",
+        "implementation-planner",
+        "current agent's Soul",
+        "Venus",
+    ] {
+        assert!(
+            !coffee.contains(private_stack_term),
+            "Coffee depends on private-stack vocabulary: {private_stack_term}"
+        );
+    }
+    for contract in [
+        "short, fail-open preparation step",
+        "A clear, bounded request should proceed without ceremony",
+        "readiness brief containing the goal",
+        "existing `soulmate brief` or",
+        "Coffee grants no\n  execution authority and must not block work when unavailable",
+    ] {
+        assert!(
+            coffee.contains(contract),
+            "Coffee lost contract: {contract}"
+        );
+    }
+
+    assert!(agents.contains("external coding agents modifying the Soulmate repository"));
+    assert!(agents.contains("[CONTRIBUTING.md](CONTRIBUTING.md)"));
+    assert!(contributing.contains("This guide is for human contributors"));
+    assert!(contributing.contains("[AGENTS.md](AGENTS.md)"));
+    assert!(contributing
+        .contains("This keeps contributor and CI\nformatting and lint behavior aligned"));
+    assert!(contributing.contains("cargo clippy --locked --all-targets -- -D warnings"));
+}
+
+#[test]
+fn repository_toolchain_is_the_only_development_and_ci_selector() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let read = |file: &str| fs::read_to_string(root.join(file)).unwrap();
+    let toolchain = read("rust-toolchain.toml");
+    let cargo = read("Cargo.toml");
+    let contributing = read("CONTRIBUTING.md");
+
+    assert_eq!(
+        toolchain,
+        "[toolchain]\nchannel = \"1.75.0\"\nprofile = \"minimal\"\ncomponents = [\"rustfmt\", \"clippy\"]\n"
+    );
+    assert!(cargo.contains("rust-version = \"1.75\""));
+    assert!(contributing.contains("[`rust-toolchain.toml`](rust-toolchain.toml)"));
+    assert!(!contributing.contains("1.75.0"));
+    assert!(!contributing.contains("cargo +"));
+
+    for (workflow, audit_install) in [
+        (
+            ".github/workflows/ci.yml",
+            "cargo +stable install cargo-audit --locked --version 0.22.2",
+        ),
+        (
+            ".github/workflows/release.yml",
+            "cargo +stable install cargo-audit --locked --version 0.22.2 --force",
+        ),
+    ] {
+        let workflow = read(workflow);
+        assert!(!workflow.contains("1.75.0"));
+        assert!(!workflow.contains("rustup toolchain"));
+        assert!(!workflow.contains("rustup default"));
+        let cargo_overrides: Vec<_> = workflow
+            .lines()
+            .map(str::trim)
+            .filter(|line| line.contains("cargo +"))
+            .collect();
+        assert_eq!(cargo_overrides, [audit_install]);
     }
 }
 
@@ -89,7 +177,7 @@ fn heading_gate_distinguishes_fenced_examples_and_removed_destinations() {
 }
 
 #[test]
-fn checked_result_docs_keep_v3_v4_and_rc1_boundaries_consistent() {
+fn checked_result_docs_keep_v3_v4_and_current_preview_boundaries_consistent() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let read = |file: &str| fs::read_to_string(root.join(file)).unwrap();
     let readme = read("README.md");
@@ -100,22 +188,22 @@ fn checked_result_docs_keep_v3_v4_and_rc1_boundaries_consistent() {
     let glossary = read("docs/glossary.md");
     let cli = read("src/cli.rs");
     for document in [&readme, &reference, &security] {
-        assert!(document.contains("v0.15.0-rc.1"));
+        assert!(document.contains("v0.15.0-rc.2"));
         assert!(!document.contains("unreleased v4"));
     }
     assert!(readme.contains(
         "v3 supports caller-reported `record-check` only; v4 supports both reported `record-check` and observed `observe-check`"
     ));
-    assert!(readme.contains("current `v0.15.0-rc.1` preview creates v4 checked ledgers"));
+    assert!(readme.contains("current `v0.15.0-rc.2` preview creates v4 checked ledgers"));
     assert!(readme.contains("retaining readable v3 ledgers"));
     assert!(reference.contains("Historical checked runs use run-event version 3"));
     assert!(security.contains("v3 supports caller-reported `run record-check` only"));
     assert!(security
         .contains("supports both reported `run record-check` and local `run observe-check`"));
-    assert!(security.contains("`v0.15.0-rc.1`\npreview supports both reported"));
+    assert!(security.contains("`v0.15.0-rc.2`\npreview supports both reported"));
     assert!(first.contains("historical v3 procedure"));
     assert!(methodology.contains("v3 `run record-check` is caller-reported-only"));
-    assert!(methodology.contains("`v0.15.0-rc.1` preview adds v4 observed-or-reported"));
+    assert!(methodology.contains("`v0.15.0-rc.2` preview adds v4 observed-or-reported"));
     assert!(
         glossary.contains("only check route in v3")
             && glossary.contains("one permitted route in v4")

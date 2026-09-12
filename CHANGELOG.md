@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.0-rc.2
+
+- Separate human contribution guidance from repository instructions for coding
+  agents and keep Coffee independent of private tool-stack vocabulary.
+- Select the contributor and CI Rust toolchain once in `rust-toolchain.toml`
+  while retaining the package MSRV as a distinct Cargo contract.
+
 ## 0.15.0-rc.1
 
 - Add checked run-event format 4 and `run observe-check`, which records a

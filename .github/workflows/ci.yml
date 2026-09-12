@@ -16,8 +16,6 @@ jobs:
         env:
           CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: ./scripts/check-public-history.sh "$CANDIDATE_SHA"
-      - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.75.0 --profile minimal --component rustfmt --component clippy && rustup default 1.75.0
       - run: cargo fmt --check
       - name: Enforce path-rendering rule
         run: ./scripts/check-path-rendering.sh
@@ -82,8 +80,6 @@ jobs:
         env:
           CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: ./scripts/check-public-history.sh "$CANDIDATE_SHA"
-      - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.75.0 --profile minimal --component rustfmt --component clippy && rustup default 1.75.0
       - name: Verify native macOS host and target
         run: |
           test "$(uname -s)" = Darwin
@@ -155,5 +151,8 @@ jobs:
           path: ~/.cargo/bin/cargo-audit
           key: cargo-audit-0.22.2-${{ runner.os }}-${{ runner.arch }}
       - name: Install pinned cargo-audit when uncached
-        run: command -v cargo-audit >/dev/null || cargo install cargo-audit --locked --version 0.22.2
+        run: |
+          if ! command -v cargo-audit >/dev/null; then
+            cargo +stable install cargo-audit --locked --version 0.22.2
+          fi
       - run: cargo audit
